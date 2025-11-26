@@ -15,8 +15,22 @@ import os
 from dotenv import load_dotenv
 import dj_database_url
 
+import cloudinary.uploader
+import cloudinary.api
+import cloudinary_storage 
+
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 load_dotenv()
+import cloudinary
+cloudinary.config(cloud_name = os.getenv("CLOUDINARY_NAME") ,
+                  api_key = os.getenv("CLOUDINARY_API_KEY") ,
+                  api_secret = os.getenv("CLOUDINARY_API_SECRET"))
+
+
+
+
+
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -36,7 +50,8 @@ ALLOWED_HOSTS = ['ghprocurement.onrender.com', 'localhost', '127.0.0.1']
 
 
 # Application definition
-my_app = ["cms" , "rest_framework" , 'drf_yasg']
+my_app = ["cms" , "rest_framework" , 'drf_yasg', 'cloudinary',
+    'cloudinary_storage',   "corsheaders",]
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -48,6 +63,8 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+      "corsheaders.middleware.CorsMiddleware",
+    "django.middleware.common.CommonMiddleware",
      'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -89,7 +106,8 @@ DATABASES = {
 '''
 
 DATABASES = {
-    'default': dj_database_url.config(default=os.getenv('DATABASE_URL'))
+    'default': dj_database_url.config(default=os.getenv('DATABASE_URL') , conn_max_age=60,
+        ssl_require=True  )
 }
 
 # Password validation
@@ -140,6 +158,18 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 ### CUSTOM SETUPS
 
+CLOUDINARY_STORAGE = {
+    "CLOUD_NAME": os.getenv("CLOUDINARY_NAME"),
+    "API_KEY":os.getenv( "CLOUDINARY_API_KEY"),
+    "API_SECRET": os.getenv("CLOUDINARY_API_SECRET"),
+    "FOLDER": os.getenv("CLOUD_FOLDER"), 
+}
 
-MEDIA_ROOT = os.path.join(BASE_DIR , "media")
-MEDIA_URL = "/media/"
+DEFAULT_FILE_STORAGE = "cloudinary_storage.storage.MediaCloudinaryStorage"
+
+CORS_ALLOWED_ORIGINS = [
+   "https://g-hprocurement-frontend.vercel.app",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+

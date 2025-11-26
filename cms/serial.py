@@ -59,16 +59,14 @@ class PortfolioSerial(ModelSerializer):
         fields = "__all__"
         
     def create(self, validated_data):
-        images = validated_data.pop("images",None)
+        images_data = self.context['request'].FILES.getlist('images')
+        
         portfolio = Portfolio.objects.create(**validated_data)
-        print(images)
-        for image in images:
-            image_add = PortfolioImages.objects.create(**image)
-            
-            portfolio.images.add(image_add)
-          
-          
-        portfolio.save()   
+        
+        for img in images_data:
+            portfolio_image = PortfolioImages.objects.create(image=img)
+            portfolio.images.add(portfolio_image)
+        
         return portfolio
     
     
