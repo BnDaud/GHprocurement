@@ -88,4 +88,31 @@ class Blog(models.Model):
     def __str__(self):
        return self.title or str(self.id)
     
+
+class MetaData(models.Model):
+      metaIntro = models.TextField(max_length=2000)
+      
+      metaDescription = models.TextField(max_length=5000)
+      
+      ordersCompleted= models.PositiveIntegerField(default=0)
+      
+      suppliers = models.PositiveIntegerField(default=0)
+      experience = models.SmallIntegerField(default=0)
     
+      email = models.EmailField()
+      
+      phone = models.CharField(max_length=55 , blank=False)
+      
+      office = models.CharField(max_length=1000)
+      
+class Service(models.Model):
+    
+    id = models.UUIDField(default=uuid4 , editable=False , primary_key=True)
+    title = models.CharField(max_length=1000 , blank=False)
+    description = models.TextField(max_length=2000 , blank=False)
+    
+class FAQ(models.Model):
+    
+    id = models.UUIDField(default=uuid4 , editable=False , primary_key=True)
+    question = models.CharField(max_length=1000 , blank=False)
+    answer = models.TextField(max_length=2000 , blank=False)

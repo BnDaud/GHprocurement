@@ -1,8 +1,11 @@
-from rest_framework.serializers import ModelSerializer
-from .models import User , Portfolio ,PortfolioImages , Blog
+from rest_framework.serializers import ModelSerializer , SerializerMethodField , ImageField
+from .models import User , Portfolio ,PortfolioImages , Blog ,Service , FAQ ,MetaData
 from django.contrib.auth.hashers import make_password
 
+
+
 class UserSerial(ModelSerializer):
+    dp = SerializerMethodField()
     
     class Meta:
         model = User
@@ -16,6 +19,11 @@ class UserSerial(ModelSerializer):
 
         extra_kwargs = {"password":{"write_only":True}}
 
+    def get_dp(self, obj):
+        if obj.dp :
+            return obj.dp.url
+        else:
+            return None
 
 
     def create(self, validated_data):
@@ -72,8 +80,27 @@ class PortfolioSerial(ModelSerializer):
     
 
 class BlogSerial(ModelSerializer):
+    featured_image = ImageField()
+    featured_image_url = SerializerMethodField()
     class Meta:
         model = Blog
+        fields ="__all__"
+        
+    def get_featured_image_url(self, obj):
+        return obj.featured_image.url if obj.featured_image else None
+        
+
+class MetaDataSerial(ModelSerializer):
+    class Meta:
+        model = MetaData
         fields = "__all__"
-        
-        
+
+class FAQSerial(ModelSerializer):
+    class Meta:
+        model = FAQ
+        fields = "__all__"
+
+class ServicesSerial(ModelSerializer) :
+    class Meta:
+        model = Service
+        fields = "__all__"   
