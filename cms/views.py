@@ -52,9 +52,13 @@ def getTotalView(req):
     blogs = Blog.objects.count()
     portfolio = Portfolio.objects.count()
     user = User.objects.count()
+    services = Service.objects.count()
+    faq = FAQ.objects.count()
     
     
-    return Response({"TotalBlogs": blogs ,"TotalPortfolio": portfolio , "TotalUsers":user} )
+    return Response({"TotalBlogs": blogs ,"TotalPortfolio": portfolio , "TotalUsers":user,
+    "TotalServices":services,
+    "TotalFaq" : faq} )
 
 @api_view(["GET"])
 def AllData(req):
