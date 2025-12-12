@@ -85,8 +85,9 @@ def AllData(req):
         "metadata":metadata,
         "service":service,
         "faq":faq,
+        "twitter": tweets
        
     }
-    print(tweets)    
-    context.update(tweets)
+    
+   
     return Response( context, status=status.HTTP_200_OK)

@@ -20,13 +20,14 @@ class FetchTwiter():
 
 
     def get_Id(self):
-        print(os.getcwd())
+      
         
         res = self.twitter.get(f"{self.url}me")
 
         data = res.json()
-        print(data)
+    
         id = data["data"]["id"]
+        
         with open("./social/twitter_id.txt" , "+w") as i:
             i.write(id)
             
