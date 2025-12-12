@@ -15,9 +15,7 @@ import os
 from dotenv import load_dotenv
 import dj_database_url
 
-import cloudinary.uploader
-import cloudinary.api
-import cloudinary_storage 
+
 
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -44,7 +42,7 @@ AUTH_USER_MODEL = "cms.User"
 SECRET_KEY = os.getenv("SECRET_KEY_DJANGO")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
 ALLOWED_HOSTS = ['ghprocurement.onrender.com', 'localhost', '127.0.0.1']
 
 
