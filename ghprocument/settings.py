@@ -166,7 +166,7 @@ CLOUDINARY_STORAGE = {
 DEFAULT_FILE_STORAGE = "cloudinary_storage.storage.MediaCloudinaryStorage"
 
 CORS_ALLOWED_ORIGINS = [
-   "https://g-hprocurement-frontend.vercel.app",
+   "https://cms.ghprocurement.com",
    "https://www.ghprocurement.com",
     "http://localhost:3000",
     "http://192.168.0.129:3000",
