@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.utils.html import format_html
-from .models import User, Portfolio, PortfolioImages, Blog
+from .models import User, Portfolio, PortfolioImages, Catalog
 
 # -------------------------------
 # User Admin
@@ -73,14 +73,15 @@ class PortfolioAdmin(admin.ModelAdmin):
 # -------------------------------
 # Blog Admin
 # -------------------------------
-@admin.register(Blog)
-class BlogAdmin(admin.ModelAdmin):
+@admin.register(Catalog)
+class CatalogAdmin(admin.ModelAdmin):
     list_display = [
-        "title",
-        "excerpt",
+        "name",
+       "price",
+       "description",
         "featured_image_tag",
-        "status",
-        "views_count",
+       
+       
         "created_at",
         "updated_at"
     ]

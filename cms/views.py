@@ -1,6 +1,6 @@
 from django.shortcuts import render
-from .models import User , Portfolio ,Blog , PortfolioImages , FAQ , MetaData , Service
-from .serial import UserSerial ,  PortfolioSerial , BlogSerial , MetaDataSerial , FAQSerial , ServicesSerial
+from .models import User , Portfolio ,Catalog , PortfolioImages , FAQ , MetaData , Service
+from .serial import UserSerial ,  PortfolioSerial , CatalogSerial , MetaDataSerial , FAQSerial , ServicesSerial
 # Create your views here.
 from rest_framework.viewsets import ModelViewSet
 from rest_framework.decorators import api_view
@@ -30,9 +30,9 @@ class PotfolioView(ModelViewSet):
     queryset = Portfolio.objects.all()
     serializer_class = PortfolioSerial
     
-class BlogView(ModelViewSet):
-    queryset = Blog.objects.all()
-    serializer_class = BlogSerial
+class CatalogView(ModelViewSet):
+    queryset = Catalog.objects.all()
+    serializer_class = CatalogSerial
     
 class MetaDataView(ModelViewSet):
     queryset = MetaData.objects.all()
@@ -50,7 +50,7 @@ class ServicesView(ModelViewSet):
 @api_view(["GET"])
 def getTotalView(req):
     
-    blogs = Blog.objects.count()
+    blogs = Catalog.objects.count()
     portfolio = Portfolio.objects.count()
     user = User.objects.count()
     services = Service.objects.count()
@@ -74,14 +74,14 @@ def AllData(req):
     
     tweet = FetchTwiter(api_key=api_key , api_secret_key=api_key_secret , access_token=access_token, access_token_secret=access_token_secret)
     
-    blogs = BlogSerial(Blog.objects.filter(status = "Published") , many=True).data
+    catalog = CatalogSerial(Catalog.objects.all(), many=True).data
     service = ServicesSerial(Service.objects.all() , many=True).data
     metadata = MetaData.objects.values()
     faq = FAQSerial(FAQ.objects.all() ,many=True).data
     tweets = tweet.getTweets()    
     
     context = {
-        "blogs":blogs,
+        "catalogs":catalog,
         "metadata":metadata,
         "service":service,
         "faq":faq,

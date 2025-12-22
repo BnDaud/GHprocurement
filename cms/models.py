@@ -3,6 +3,7 @@ from cloudinary.models import CloudinaryField
 # Create your models here.
 from django.contrib.auth.models import AbstractUser
 from uuid import uuid4
+from decimal import Decimal
 
 class User (AbstractUser):
     id = models.UUIDField(default=uuid4 , primary_key=True , editable=False)
@@ -58,31 +59,36 @@ class Portfolio(models.Model):
          return self.title or str(self.id)
     
     
-class Blog(models.Model):
+class Catalog(models.Model):
     
     
     class Categories(models.TextChoices):
-        FURNITURE  = "FURNITURE" ,"FURNITURE"
-        ELECTRONICS = "ELECTRONICS" , "ELECTRONICS"
+        OFFICE_AND_STATIONERY = "OFFICE_AND_STATIONERY", "Office and Stationery"
+        IT_AND_ELECTRONICS = "IT_AND_ELECTRONICS", "IT and Electronics"
+        INDUSTRIAL_AND_MANUFACTURING = "INDUSTRIAL_AND_MANUFACTURING", "Industrial and Manufacturing"
+        CONSTRUCTION_AND_BUILDING_MATERIALS = "CONSTRUCTION_AND_BUILDING_MATERIALS", "Construction and Building Materials"
+        ELECTRICAL_AND_POWER = "ELECTRICAL_AND_POWER", "Electrical and Power"
+        FURNITURE = "FURNITURE", "Furniture"
+        MEDICAL_AND_LABORATORY = "MEDICAL_AND_LABORATORY", "Medical and Laboratory"
+        FOOD_AND_CONSUMABLES = "FOOD_AND_CONSUMABLES", "Food and Consumables"
         
-    class Status(models.TextChoices):
-        DRAFT = "Draft" , "Draft"
-        PUBLISHED = "Published" , "Published"
+   
 
     id = models.UUIDField(default=uuid4 , editable=False, primary_key=True)
-    title = models.CharField(max_length=200)
+    name = models.CharField(max_length=200)
     #author = models.ForeignKey(User , on_delete=models.SET_NULL , null=True)
-    content = models.TextField(max_length=10000 , blank=False)
-    excerpt = models.TextField(max_length=500, blank=False)
-    featured_image = CloudinaryField("blog_image",folder="GHProblogs", blank=True , null = True)
+    description = models.TextField(max_length=1000 , blank=False)
+ 
+    featured_image = CloudinaryField("Catalogs_image",folder="GHCatalogs", blank=True , null = True)
+    min_quantity = models.IntegerField(default=10, blank=False)
     
     category = models.CharField(default="", max_length=50 , choices=Categories.choices, null = True)
  
-    status = models.CharField(default="" ,max_length=50, choices=Status.choices, null = True) 
+    #status = models.CharField(default="" ,max_length=50, choices=Status.choices, null = True) 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
-    views_count = models.PositiveIntegerField(default=0)
+    price = models.DecimalField(max_digits=10 , decimal_places=2 , default=Decimal("1.00"))
     
     
     def __str__(self):

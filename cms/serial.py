@@ -1,5 +1,5 @@
 from rest_framework.serializers import ModelSerializer , SerializerMethodField , ImageField
-from .models import User , Portfolio ,PortfolioImages , Blog ,Service , FAQ ,MetaData
+from .models import User , Portfolio ,PortfolioImages , Catalog,Service , FAQ ,MetaData
 from django.contrib.auth.hashers import make_password
 
 
@@ -79,11 +79,11 @@ class PortfolioSerial(ModelSerializer):
     
     
 
-class BlogSerial(ModelSerializer):
+class CatalogSerial(ModelSerializer):
     featured_image = ImageField()
     featured_image_url = SerializerMethodField()
     class Meta:
-        model = Blog
+        model = Catalog
         fields ="__all__"
         
     def get_featured_image_url(self, obj):
