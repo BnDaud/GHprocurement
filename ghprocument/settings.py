@@ -42,7 +42,7 @@ AUTH_USER_MODEL = "cms.User"
 SECRET_KEY = os.getenv("SECRET_KEY_DJANGO")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = False
+DEBUG = True
 ALLOWED_HOSTS = ['ghprocurement.onrender.com', 'localhost', '127.0.0.1']
 
 
@@ -172,4 +172,17 @@ CORS_ALLOWED_ORIGINS = [
     "http://192.168.0.129:3000",
     "http://127.0.0.1:3000",
 ]
+
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+
+EMAIL_HOST = "smtp.zoho.com"
+EMAIL_PORT = 465
+EMAIL_USE_SSL = True
+EMAIL_USE_TLS = False
+
+EMAIL_HOST_USER = "your-email@yourdomain.com"
+EMAIL_HOST_PASSWORD = "YOUR_ZOHO_APP_PASSWORD"
+
+DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
+
 

@@ -1,5 +1,5 @@
 from rest_framework.serializers import ModelSerializer , SerializerMethodField , ImageField
-from .models import User , Portfolio ,PortfolioImages , Catalog,Service , FAQ ,MetaData
+from .models import User , Catalog,Service , FAQ ,MetaData , RFQ
 from django.contrib.auth.hashers import make_password
 
 
@@ -51,33 +51,7 @@ class UserSerial(ModelSerializer):
         return instance
         #return super().update(instance, validated_data)
         
-        
-
-class PortfolioImageSerial(ModelSerializer):
-    class Meta:
-        model = PortfolioImages
-        
-        fields = "__all__"
-
-
-class PortfolioSerial(ModelSerializer):
-    images = PortfolioImageSerial(many=True)
-    class Meta:
-        model = Portfolio
-        fields = "__all__"
-        
-    def create(self, validated_data):
-        images_data = self.context['request'].FILES.getlist('images')
-        
-        portfolio = Portfolio.objects.create(**validated_data)
-        
-        for img in images_data:
-            portfolio_image = PortfolioImages.objects.create(image=img)
-            portfolio.images.add(portfolio_image)
-        
-        return portfolio
-    
-    
+            
 
 class CatalogSerial(ModelSerializer):
     featured_image = ImageField()
@@ -103,4 +77,44 @@ class FAQSerial(ModelSerializer):
 class ServicesSerial(ModelSerializer) :
     class Meta:
         model = Service
-        fields = "__all__"   
+        fields = "__all__"  
+
+
+class RFQSerial(ModelSerializer):
+    user = UserSerial(read_only = True) 
+    file_url = SerializerMethodField()
+    file = ImageField()
+    
+    class Meta:
+        model = RFQ
+        fields = "__all__"
+        
+        extra_kwargs = {"file":{"write_only":True}}
+        
+
+    def get_file_url(self , obj):
+        return obj.file.url if obj.file else None
+    
+    def create(self, validated_data):
+        
+        user , created = User.objects.get_or_create(
+                        username = validated_data["company"] ,
+                        defaults={
+                        "email":validated_data["email"] , 
+                        "phone" : validated_data["phone"] , 
+                        "dp" : validated_data["file"]} )
+        if created:
+            user.set_password(validated_data["company"])
+        
+            user.save()
+        rfq = RFQ.objects.create(
+            user=user,
+            email=validated_data["email"],
+            name=validated_data["name"],
+            company=validated_data["company"],
+            item=validated_data["item"],
+            file=validated_data.get("file"),
+               )
+        
+        
+        return rfq

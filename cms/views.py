@@ -1,6 +1,6 @@
 from django.shortcuts import render
-from .models import User , Portfolio ,Catalog , PortfolioImages , FAQ , MetaData , Service
-from .serial import UserSerial ,  PortfolioSerial , CatalogSerial , MetaDataSerial , FAQSerial , ServicesSerial
+from .models import User ,Catalog, FAQ , MetaData , Service , RFQ
+from .serial import UserSerial , CatalogSerial , MetaDataSerial , FAQSerial , ServicesSerial , RFQSerial
 # Create your views here.
 from rest_framework.viewsets import ModelViewSet
 from rest_framework.decorators import api_view
@@ -26,9 +26,6 @@ class UserView(ModelViewSet):
             return super().create(request, *args, **kwargs)
 
 
-class PotfolioView(ModelViewSet):
-    queryset = Portfolio.objects.all()
-    serializer_class = PortfolioSerial
     
 class CatalogView(ModelViewSet):
     queryset = Catalog.objects.all()
@@ -47,18 +44,22 @@ class ServicesView(ModelViewSet):
     serializer_class = ServicesSerial
     
     
+class RFQView(ModelViewSet):
+    serializer_class = RFQSerial
+    queryset = RFQ.objects.all()
+    
 @api_view(["GET"])
 def getTotalView(req):
     
     blogs = Catalog.objects.count()
-    portfolio = Portfolio.objects.count()
+  
     user = User.objects.count()
     services = Service.objects.count()
     faq = FAQ.objects.count()
     
   
     
-    return Response({"TotalBlogs": blogs ,"TotalPortfolio": portfolio , "TotalUsers":user,
+    return Response({"TotalBlogs": blogs , "TotalUsers":user,
     "TotalServices":services,
     "TotalFaq" : faq} )
 

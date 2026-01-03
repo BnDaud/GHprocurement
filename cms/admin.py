@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.utils.html import format_html
-from .models import User, Portfolio, PortfolioImages, Catalog
+from .models import User,  Catalog
 
 # -------------------------------
 # User Admin
@@ -29,45 +29,12 @@ class UserAdmin(admin.ModelAdmin):
 # -------------------------------
 # PortfolioImages Admin
 # -------------------------------
-@admin.register(PortfolioImages)
-class PortfolioImagesAdmin(admin.ModelAdmin):
-    list_display = ["id", "image_tag"]
-    
-    def image_tag(self, obj):
-        if obj.image:
-            return format_html(
-                '<img src="{}" style="width:50px; height:50px;" />',
-                obj.image.url
-            )
-        return "—"
-    image_tag.short_description = "Portfolio Image"
 
 
 # -------------------------------
 # Portfolio Admin
 # -------------------------------
-@admin.register(Portfolio)
-class PortfolioAdmin(admin.ModelAdmin):
-    list_display = [
-        "title",
-        "id",
-        "client_name",
-        "category",
-        "thumbnail_tag",
-        "status",
-        "created_at",
-        "updated_at"
-    ]
-    filter_horizontal = ("images",)  # For ManyToManyField
-    
-    def thumbnail_tag(self, obj):
-        if obj.thumbnail:
-            return format_html(
-                '<img src="{}" style="width:50px; height:50px;" />',
-                obj.thumbnail.url
-            )
-        return "—"
-    thumbnail_tag.short_description = "Thumbnail"
+
 
 
 # -------------------------------

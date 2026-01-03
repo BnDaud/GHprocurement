@@ -15,50 +15,6 @@ class User (AbstractUser):
 
     
     
-    
-    
-class PortfolioImages(models.Model):
-    id = models.UUIDField(default=uuid4 , editable=False , primary_key=True ) 
-    
-    image = CloudinaryField("portfolio_image" , folder = "Port_images")  
-    
-    
-    
-    def __str__(self):
-         return str(self.id)
-    
-    class Meta:
-        verbose_name_plural = "Portfolio Images" 
-
-class Portfolio(models.Model):
-    class Categories(models.TextChoices):
-        FURNITURE  = "FURNITURE" ,"FURNITURE"
-        ELECTRONICS = "ELECTRONICS" , "ELECTRONICS"
-    
-    class Status(models.TextChoices):
-        DRAFT = "Draft" , "Draft"
-        PUBLISHED = "Published" , "Published"
-    
-    id = models.UUIDField(default=uuid4 , editable=False ,  primary_key= True) 
-    title = models.CharField(max_length=200 , blank=False)
-    client_name = models.CharField(max_length=200 , blank=False)
-    description = models.TextField(max_length=1000 , blank=False)
-    #technologies = models.CharField(max_length=1000 , blank = True )
-    category = models.CharField(max_length=25 , choices=Categories.choices, null=True) 
-    thumbnail = CloudinaryField("thumbnail",folder="GHProthumbnails" , blank=True)
-    images = models.ManyToManyField(PortfolioImages , related_name="GHProportfolioimages")
-   
-    status = models.CharField(default="" ,max_length=50, choices=Status.choices, null = True) #to show in home page or not
-    date_completed = models.DateTimeField(blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    
-    updated_at = models.DateTimeField(auto_now=True)
-    
-    
-    def __str__(self):
-         return self.title or str(self.id)
-    
-    
 class Catalog(models.Model):
     
     
@@ -122,3 +78,15 @@ class FAQ(models.Model):
     id = models.UUIDField(default=uuid4 , editable=False , primary_key=True)
     question = models.CharField(max_length=1000 , blank=False)
     answer = models.TextField(max_length=2000 , blank=False)
+    
+    
+class RFQ(models.Model):
+    id = models.UUIDField(default=uuid4,primary_key=True , editable=False)
+    user = models.ForeignKey(User , related_name="rfqs" , on_delete=models.CASCADE)
+    email = models.EmailField(blank=False)
+    name = models.CharField(max_length=500 , blank = False) 
+    phone = models.CharField(max_length=55 , blank=False , null = True)
+    
+    company= models.CharField(max_length = 500 , blank = False)
+    item = models.TextField(max_length=5000 , blank=False)
+    file = CloudinaryField("rfq_Image" , folder = "RFQ_Image")
