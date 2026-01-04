@@ -7,7 +7,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
 from .fetchtwitter import FetchTwiter
-
+from .task import SendRFQ
 import os
 
 class UserView(ModelViewSet):
@@ -47,6 +47,18 @@ class ServicesView(ModelViewSet):
 class RFQView(ModelViewSet):
     serializer_class = RFQSerial
     queryset = RFQ.objects.all()
+    
+    
+    def create(self, request, *args, **kwargs):
+        serial = self.get_serializer(data = request.data)
+        print(request.data)
+        SendRFQ()
+        serial.is_valid()
+        self.perform_create(serial)
+        
+        
+        
+        return Response(serial.data , status=status.HTTP_200_OK)
     
 @api_view(["GET"])
 def getTotalView(req):

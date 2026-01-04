@@ -77,7 +77,7 @@ ROOT_URLCONF = 'ghprocument.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [BASE_DIR/"templates"],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -104,7 +104,7 @@ DATABASES = {
 '''
 
 DATABASES = {
-    'default': dj_database_url.config(default=os.getenv('DATABASE_URL') , conn_max_age=60,
+    'default': dj_database_url.config(default=os.getenv('DATABASE_URL') , conn_max_age=0,
         ssl_require=True  )
 }
 
@@ -180,8 +180,8 @@ EMAIL_PORT = 465
 EMAIL_USE_SSL = True
 EMAIL_USE_TLS = False
 
-EMAIL_HOST_USER = "your-email@yourdomain.com"
-EMAIL_HOST_PASSWORD = "YOUR_ZOHO_APP_PASSWORD"
+EMAIL_HOST_USER = os.getenv("EMAIL")
+EMAIL_HOST_PASSWORD = os.getenv("PWORD")
 
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 

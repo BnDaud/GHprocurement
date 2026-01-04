@@ -80,9 +80,10 @@ class ServicesSerial(ModelSerializer) :
         fields = "__all__"  
 
 
+
 class RFQSerial(ModelSerializer):
     user = UserSerial(read_only = True) 
-    file_url = SerializerMethodField()
+    file_url = SerializerMethodField(read_only = True)
     file = ImageField()
     
     class Meta:
@@ -102,7 +103,7 @@ class RFQSerial(ModelSerializer):
                         defaults={
                         "email":validated_data["email"] , 
                         "phone" : validated_data["phone"] , 
-                        "dp" : validated_data["file"]} )
+                        "file" : validated_data["file"]} )
         if created:
             user.set_password(validated_data["company"])
         
