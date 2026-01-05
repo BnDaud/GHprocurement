@@ -1,4 +1,4 @@
-from rest_framework.serializers import ModelSerializer , SerializerMethodField , ImageField , Serializer , CharField 
+from rest_framework.serializers import ModelSerializer , SerializerMethodField , ImageField , Serializer , CharField , EmailField
 from .models import User , Catalog,Service , FAQ ,MetaData , RFQ
 from django.contrib.auth.hashers import make_password
 
@@ -124,3 +124,4 @@ class EmailSerial(Serializer):
     body = CharField(max_length = 5000 , required = True)
     subject = CharField(max_length = 200 , required = True)
     title = CharField(max_length = 200 , required = True)
+    recipient = EmailField()

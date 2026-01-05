@@ -8,7 +8,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
 from .fetchtwitter import FetchTwiter
-from .task import SendRFQ
+from .task import SendRFQ , Sendemail
 import os
 
 class UserView(ModelViewSet):
@@ -112,6 +112,8 @@ class EmailView(APIView):
   def post(self , request):
       serial = EmailSerial(data = request.data)
       serial.is_valid()
+      
+      Sendemail(serial.validated_data)
       
 
       
