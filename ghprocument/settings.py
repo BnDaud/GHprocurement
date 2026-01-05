@@ -189,7 +189,7 @@ if env =="local":
     EMAIL_USE_SSL = True
     EMAIL_USE_TLS = False
 else:
-    EMAIL_PORT = 587
+    EMAIL_PORT = 2525
     EMAIL_USE_SSL = False
     EMAIL_USE_TLS = True
     
