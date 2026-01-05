@@ -1,7 +1,8 @@
 from django.shortcuts import render
 from .models import User ,Catalog, FAQ , MetaData , Service , RFQ
-from .serial import UserSerial , CatalogSerial , MetaDataSerial , FAQSerial , ServicesSerial , RFQSerial
+from .serial import UserSerial , CatalogSerial , MetaDataSerial , FAQSerial , ServicesSerial , RFQSerial , EmailSerial
 # Create your views here.
+from rest_framework.views import APIView
 from rest_framework.viewsets import ModelViewSet
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
@@ -51,10 +52,12 @@ class RFQView(ModelViewSet):
     
     def create(self, request, *args, **kwargs):
         serial = self.get_serializer(data = request.data)
-        print(request.data)
-        SendRFQ()
+        
+        data = request.data
         serial.is_valid()
-        self.perform_create(serial)
+        instance = serial.save()
+        data["image_url"] = instance.file.url
+        SendRFQ(data)
         
         
         
@@ -101,6 +104,15 @@ def AllData(req):
         "twitter": tweets
        
     }
-    
    
     return Response( context, status=status.HTTP_200_OK)
+
+
+class EmailView(APIView):
+  def post(self , request):
+      serial = EmailSerial(data = request.data)
+      serial.is_valid()
+      
+
+      
+      return Response(serial.validated_data , status=status.HTTP_200_OK)

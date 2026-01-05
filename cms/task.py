@@ -1,13 +1,25 @@
-from django.core.mail import send_mail
+from django.core.mail import EmailMultiAlternatives
+from django.template.loader import render_to_string
 from django.conf import settings
+from django.utils.html import strip_tags
 
+def SendRFQ(arg ):
+    
+    subject =  "Request Of Quote - Confirmed"
+    from_ = settings.EMAIL_HOST_USER
+    to_email = [arg.get("email")]
+    
+    html_content = render_to_string("RFQtemplate.html" , arg)
+    
+    text_content = strip_tags(html_content)
 
-def SendRFQ():
-    send_mail(
-        subject = "Request For Quote",
-        message= "Hello Gh Procurement",
-        from_email= settings.EMAIL_HOST_USER,
-        recipient_list=["lawalsulaimon70@gmail.com" , "vectoredmatrix@gmail.com"],
-        fail_silently= False 
+    email = EmailMultiAlternatives(
+        subject=subject,
+        body = text_content,
+        from_email= from_,
+        to=to_email
     )
+    
+    email.attach_alternative(html_content , "text/html")
+    email.send()
     

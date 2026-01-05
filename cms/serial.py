@@ -1,4 +1,4 @@
-from rest_framework.serializers import ModelSerializer , SerializerMethodField , ImageField
+from rest_framework.serializers import ModelSerializer , SerializerMethodField , ImageField , Serializer , CharField 
 from .models import User , Catalog,Service , FAQ ,MetaData , RFQ
 from django.contrib.auth.hashers import make_password
 
@@ -103,7 +103,7 @@ class RFQSerial(ModelSerializer):
                         defaults={
                         "email":validated_data["email"] , 
                         "phone" : validated_data["phone"] , 
-                        "file" : validated_data["file"]} )
+                        "dp" : validated_data["file"]} )
         if created:
             user.set_password(validated_data["company"])
         
@@ -119,3 +119,8 @@ class RFQSerial(ModelSerializer):
         
         
         return rfq
+    
+class EmailSerial(Serializer):
+    body = CharField(max_length = 5000 , required = True)
+    subject = CharField(max_length = 200 , required = True)
+    title = CharField(max_length = 200 , required = True)
