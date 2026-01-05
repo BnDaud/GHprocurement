@@ -182,7 +182,7 @@ EMAIL_HOST_USER = os.getenv("EMAIL")
 EMAIL_HOST_PASSWORD = os.getenv("PWORD")
 
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
-env = os.getenv("ENV")
+env = os.getenv("ENV" , "production")
 
 if env =="local":
     EMAIL_PORT = 465
