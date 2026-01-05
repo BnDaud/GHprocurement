@@ -21,10 +21,10 @@ class UserView(ModelViewSet):
     
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data = request.data)
-        if serializer.is_valid():
+        serializer.is_valid()
         #print({"request data": request.data , "serializer":serializer} )
         
-            return super().create(request, *args, **kwargs)
+        return super().create(request, *args, **kwargs)
 
 
     
