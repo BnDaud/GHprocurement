@@ -176,13 +176,21 @@ CORS_ALLOWED_ORIGINS = [
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 
 EMAIL_HOST = "smtp.zoho.com"
-EMAIL_PORT = 465
-EMAIL_USE_SSL = True
-EMAIL_USE_TLS = False
+
 
 EMAIL_HOST_USER = os.getenv("EMAIL")
 EMAIL_HOST_PASSWORD = os.getenv("PWORD")
 
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
+env = os.getenv("ENV")
 
+if env =="local":
+    EMAIL_PORT = 465
+    EMAIL_USE_SSL = True
+    EMAIL_USE_TLS = False
+else:
+    EMAIL_PORT = 587
+    EMAIL_USE_SSL = False
+    EMAIL_USE_TLS = True
+    
 
