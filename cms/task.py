@@ -3,7 +3,7 @@ from django.template.loader import render_to_string
 from django.conf import settings
 from django.utils.html import strip_tags
 import httpx
-import os
+import os, requests
 from django.core.cache import cache
 
 
@@ -14,11 +14,7 @@ ZOHO_REFRESH_TOKEN = os.getenv("REFRESH_TOKEN")
 
 
 
-
-
-
-
-async def get_access_token():
+def get_access_token():
     url = "https://accounts.zoho.com/oauth/v2/token"
     data = {
         "refresh_token": ZOHO_REFRESH_TOKEN,
@@ -31,53 +27,49 @@ async def get_access_token():
     
     if token:
         return token
-
-    async with httpx.AsyncClient() as client:
-        response = await client.post(url, data=data)
-        response.raise_for_status()
-        res = response.json()
-        _token = res["access_token"]
-        cache.set("access_token" , _token , 3500)
-        return _token
-
+    
+    response = requests.post(url, data=data)
+    response.raise_for_status()
+    res = response.json()
+    _token = res["access_token"]
+    cache.set("access_token" , _token , 3500)
+    return _token
 
 
-async def get_account_id():
-    access_token = await get_access_token()
+
+def get_account_id():
+    access_token = get_access_token()
 
     url = "https://mail.zoho.com/api/organization/909482271/accounts"
     headers = {
         "Authorization": f"Zoho-oauthtoken {access_token}"
     }
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(url, headers=headers)
-        response.raise_for_status()
-
-        data = response.json()["data"]
-
-        # Usually first account is the primary mail account
-        account_id = data[0]["accountId"]
-        
-        print(f"ACCOUNT ID FETCHED , {account_id}")
-        return account_id
+    response = requests.get(url, headers=headers)
+    response.raise_for_status()
+    data = response.json()["data"]
+    # Usually first account is the primary mail account
+    account_id = data[0]["accountId"]
+    
+    print(f"ACCOUNT ID FETCHED , {account_id}")
+    return account_id
 
 
 
-async def get_cached_account_id():
+def get_cached_account_id():
     account_id = cache.get("zoho_account_id")
     if account_id:
         return account_id
 
-    account_id = await get_account_id()
+    account_id = get_account_id()
     cache.set("zoho_account_id", account_id, None)  # store forever
     return account_id
 
 
-async def sendEMailAPI(args):
+def sendEMailAPI(args):
     
-    access_token = await get_access_token()
-    account_id = await get_cached_account_id()
+    access_token =  get_access_token()
+    account_id =  get_cached_account_id()
     
     html_content = render_to_string("email.html" , args)
     subject = args.get("subject")
@@ -99,12 +91,12 @@ async def sendEMailAPI(args):
         "content":html_content
     }
     
-    async with httpx.AsyncClient() as client:
-        response =await client.post(url=url , headers=headers , json=payload)
-        
-        response.raise_for_status()
-        print(response.json())
-        return response.json()
+    response = requests.post(url, headers=headers, json=payload)
+    response.raise_for_status()
+    print(response.json())
+    return response.json()
+       
+      
 
 
 def SendRFQ(arg ):
