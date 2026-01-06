@@ -40,10 +40,33 @@ async def get_access_token():
 
 async def sendEMailAPI(args):
     
+    access_token = await get_access_token()
     
     html_content = render_to_string("email.html" , args)
     subject = args.get("subject")
+    recipient = args.get("recipient")
+    from_email = settings.EMAIL_HOST_USER
     
+    url = ""
+    
+    headers = {
+        "Authorization" :f"Zoho-oauthtoken {access_token}",
+        "Content-Type":"application/json"
+    }
+    
+    payload = {
+        "fromAddress":from_email,
+        "toAddress": recipient,
+        "subject" : subject,
+        "content":html_content
+    }
+    
+    async with httpx.AsyncClient() as client:
+        response =await client.post(url=url , headers=headers , json=payload)
+        
+        response.raise_for_status()
+        print(response.json())
+        return response.json()
 
 
 def SendRFQ(arg ):
