@@ -9,8 +9,8 @@ from rest_framework.response import Response
 from rest_framework import status
 from .fetchtwitter import FetchTwiter
 from .task import SendRFQ , Sendemail, sendEMailAPI
-import os
-from asyncio import create_task
+import os , threading
+from asyncio import create_task , get_running_loop , run
 
 class UserView(ModelViewSet):
     
@@ -110,12 +110,14 @@ def AllData(req):
 
 
 class EmailView(APIView):
-  def post(self , request):
+    def post(self , request):
       serial = EmailSerial(data = request.data)
       serial.is_valid()
       
       # run the task in the background
-      create_task(sendEMailAPI(args=serial.validated_data))
+      threading.Thread(target=lambda:run(sendEMailAPI(args=serial.validated_data))).start()
+      
+      
       #Sendemail(serial.validated_data)
       
 
