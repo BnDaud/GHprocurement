@@ -14,6 +14,10 @@ ZOHO_REFRESH_TOKEN = os.getenv("REFRESH_TOKEN")
 
 
 
+
+
+
+
 async def get_access_token():
     url = "https://accounts.zoho.com/oauth/v2/token"
     data = {
@@ -38,16 +42,50 @@ async def get_access_token():
 
 
 
+async def get_account_id():
+    access_token = await get_access_token()
+
+    url = "https://mail.zoho.com/api/organization/909482271/accounts"
+    headers = {
+        "Authorization": f"Zoho-oauthtoken {access_token}"
+    }
+
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url, headers=headers)
+        response.raise_for_status()
+
+        data = response.json()["data"]
+
+        # Usually first account is the primary mail account
+        account_id = data[0]["accountId"]
+        
+        print(f"ACCOUNT ID FETCHED , {account_id}")
+        return account_id
+
+
+
+async def get_cached_account_id():
+    account_id = cache.get("zoho_account_id")
+    if account_id:
+        return account_id
+
+    account_id = await get_account_id()
+    cache.set("zoho_account_id", account_id, None)  # store forever
+    return account_id
+
+
 async def sendEMailAPI(args):
     
     access_token = await get_access_token()
+    account_id = await get_cached_account_id()
     
     html_content = render_to_string("email.html" , args)
     subject = args.get("subject")
     recipient = args.get("recipient")
     from_email = settings.EMAIL_HOST_USER
     
-    url = ""
+    url = f"https://mail.zoho.com/api/accounts/{account_id}/messages"
+
     
     headers = {
         "Authorization" :f"Zoho-oauthtoken {access_token}",
