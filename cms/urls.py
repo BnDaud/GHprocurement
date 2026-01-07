@@ -2,6 +2,9 @@ from rest_framework.routers import DefaultRouter
 from django.http import HttpResponse
 from .views import UserView ,  CatalogView , getTotalView , AllData , ServicesView, FAQView ,  EmailView,MetaDataView , RFQView
 from django.urls import path , include
+import requests , os
+from django.http import HttpResponse , JsonResponse
+
 routes = DefaultRouter()
 routes.register("user", UserView , basename="users")
 routes.register("catalogs", CatalogView, basename="catalogs")
@@ -11,8 +14,12 @@ routes.register("metadata" , MetaDataView , basename="metadata")
 routes.register("rfqs", RFQView , basename="rfqs")
 
 
-import requests
-from django.http import HttpResponse , JsonResponse
+
+
+
+ZOHO_CLIENT_ID = os.getenv("CLIENT_ID")
+ZOHO_CLIENT_SECRET = os.getenv("CLIENT_SECRET")
+ZOHO_REFRESH_TOKEN = os.getenv("REFRESH_TOKEN")
 
 def zoho_callback(request):
     code = request.GET.get("code")
@@ -23,8 +30,8 @@ def zoho_callback(request):
     token_url = "https://accounts.zoho.com/oauth/v2/token"
     data = {
         "grant_type": "authorization_code",
-        "client_id": "1000.KMXUOSUEUGXAGMT1NNBVZN87XVOM8M",
-        "client_secret": "d33283d6112f1f9f7a4ead126e92f14a4061c49053",
+        "client_id": ZOHO_CLIENT_ID,
+        "client_secret": ZOHO_CLIENT_SECRET,
         "redirect_uri": "http://localhost:8000/api/zoho/callback/",
         "code": code
     }
