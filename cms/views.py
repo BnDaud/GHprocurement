@@ -111,15 +111,19 @@ def AllData(req):
 
 class EmailView(APIView):
     def post(self , request):
-      serial = EmailSerial(data = request.data)
-      serial.is_valid()
+        serial = EmailSerial(data = request.data)
+        serial.is_valid()
       
       # run the task in the background
-      threading.Thread(target=lambda:run(sendEMailAPI(args=serial.validated_data))).start()
+        threading.Thread(
+        target=sendEMailAPI,
+        args=(serial.validated_data,)
+        ).start()
+
       
       
-      #Sendemail(serial.validated_data)
+        #Sendemail(serial.validated_data)
       
 
       
-      return Response(serial.validated_data , status=status.HTTP_200_OK)
+        return Response(serial.validated_data , status=status.HTTP_200_OK)

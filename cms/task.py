@@ -2,7 +2,6 @@ from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.conf import settings
 from django.utils.html import strip_tags
-import httpx
 import os, requests
 from django.core.cache import cache
 
@@ -26,12 +25,14 @@ def get_access_token():
     token = cache.get("access_token")
     
     if token:
+        #print(f"from access => token {token}")
         return token
     
     response = requests.post(url, data=data)
     response.raise_for_status()
     res = response.json()
     _token = res["access_token"]
+    #print(f"from access => token {_token}")
     cache.set("access_token" , _token , 3500)
     return _token
 
@@ -40,18 +41,20 @@ def get_access_token():
 def get_account_id():
     access_token = get_access_token()
 
-    url = "https://mail.zoho.com/api/organization/909482271/accounts"
+    url = "https://mail.zoho.com/api/accounts"
     headers = {
-        "Authorization": f"Zoho-oauthtoken {access_token}"
+        "Authorization": f"Zoho-oauthtoken {access_token}",
+        "Accept": "application/json",
+        "Content-Type": "application/json",
     }
 
     response = requests.get(url, headers=headers)
     response.raise_for_status()
     data = response.json()["data"]
-    # Usually first account is the primary mail account
+    #print(data)
     account_id = data[0]["accountId"]
     
-    print(f"ACCOUNT ID FETCHED , {account_id}")
+    #print(f"ACCOUNT ID FETCHED , {account_id}")
     return account_id
 
 
@@ -93,7 +96,7 @@ def sendEMailAPI(args):
     
     response = requests.post(url, headers=headers, json=payload)
     response.raise_for_status()
-    print(response.json())
+    #print(response.json())
     return response.json()
        
       
