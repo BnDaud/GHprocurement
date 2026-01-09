@@ -8,7 +8,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
 from .fetchtwitter import FetchTwiter
-from .task import SendRFQ , Sendemail, sendEMailAPI
+from .task import SendRFQ , Sendemail, sendEMailAPI ,sendRFQAPI
 import os , threading
 from asyncio import create_task , get_running_loop , run
 
@@ -55,14 +55,20 @@ class RFQView(ModelViewSet):
         serial = self.get_serializer(data = request.data)
         
         data = request.data
-        serial.is_valid()
-        instance = serial.save()
-        data["image_url"] = instance.file.url
-        SendRFQ(data)
+        if serial.is_valid() :
+            print(serial.validated_data)
+            instance = serial.save()
+            data["image_url"] = instance.file.url
+            # SendRFQ(data)
+            threading.Thread(
+        target=sendRFQAPI,
+        args=(serial.validated_data,)
+        ).start()
         
         
+            return Response(serial.data , status=status.HTTP_200_OK)
         
-        return Response(serial.data , status=status.HTTP_200_OK)
+        return Response({"Error":"Bad Request"} , status=status.HTTP_400_BAD_REQUEST)
     
 @api_view(["GET"])
 def getTotalView(req):

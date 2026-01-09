@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RFQ Confirmation</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: Arial, Helvetica, sans-serif;
+        background-color: #f4f4f4;
+        color: #333333;
+      }
+
+      table {
+        border-collapse: collapse;
+      }
+
+      .container {
+        max-width: 600px;
+        margin: 20px auto;
+        background-color: #ffffff;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      }
+
+      /* Header */
+      .header {
+        background-color: #febcbd;
+        padding: 15px 20px;
+      }
+
+      .header-table {
+        width: 100%;
+      }
+
+      .header-table td {
+        vertical-align: middle;
+      }
+
+      .header-logo img {
+        max-width: 100px;
+        height: auto;
+        display: block;
+      }
+
+      .header-info {
+        text-align: right;
+        font-size: 14px;
+        color: #420e51;
+        font-weight: bold;
+      }
+
+      .header-info div {
+        margin-bottom: 4px;
+      }
+
+      /* Main content */
+      .content {
+        padding: 30px 25px;
+      }
+
+      .content h2 {
+        color: #febcbd;
+        font-size: 24px;
+        margin-top: 0;
+      }
+
+      .content h3 {
+        color: #420e51;
+        margin-bottom: 10px;
+      }
+
+      .content p {
+        font-size: 14px;
+        line-height: 1.6;
+        margin: 10px 0;
+        color: #420e51;
+      }
+
+      /* RFQ Details Table */
+      .rfq-details {
+        width: 100%;
+        margin: 15px 0;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        padding: 10px;
+      }
+
+      .rfq-details td {
+        padding: 8px 10px;
+        font-size: 14px;
+        vertical-align: top;
+      }
+
+      .rfq-details tr:nth-child(odd) {
+        background-color: #fdf2f2;
+      }
+
+      /* File preview */
+      .file-image {
+        max-width: 50%;
+        height: auto;
+        border-radius: 4px;
+      }
+
+      /* Footer */
+      .footer {
+        background-color: #420e51;
+        text-align: center;
+        font-size: 12px;
+        color: #ffffff;
+        padding: 15px 20px;
+        border-top: 3px solid #febcbd;
+      }
+
+      /* Signature */
+      .signature-table img {
+        width: 80px;
+        max-width: 100%;
+      }
+
+      /* CTA Button */
+      .button {
+        display: inline-block;
+        padding: 10px 20px;
+        background-color: #420e51;
+        color: #ffffff !important;
+        text-decoration: none;
+        border-radius: 6px;
+        margin-top: 15px;
+        font-weight: bold;
+      }
+
+      @media screen and (max-width: 600px) {
+        .content {
+          padding: 20px;
+        }
+        .header-logo img {
+          max-width: 80px;
+        }
+        .header-info {
+          text-align: center;
+          margin-top: 10px;
+        }
+        .header-table td {
+          display: block;
+          text-align: center;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <table width="100%" cellpadding="0" cellspacing="0">
+      <tr>
+        <td align="center">
+          <table class="container">
+            <!-- Header -->
+            <tr>
+              <td class="header">
+                <table class="header-table">
+                  <tr>
+                    <!-- Logo on left -->
+                    <td class="header-logo">
+                      <img
+                        src="https://res.cloudinary.com/djasdhmmg/image/upload/v1767976601/Logo_iaaqdj.png"
+                        alt="Gh Procurement Logo"
+                      />
+                    </td>
+                    <!-- Company info on right -->
+                    <td class="header-info">
+                      <div>Gh Procurement</div>
+                      <div>Email: info@ghprocurement.com</div>
+                      <div>Phone: 08087958090</div>
+                      <div>Website: ghprocurement.com</div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <!-- Main Content -->
+            <tr>
+              <td class="content">
+                <h2>{{ heading }}</h2>
+                <p>Dear {{ name }},</p>
+
+                <p>
+                  Thank you for submitting your
+                  <strong>Request for Quotation (RFQ)</strong>. We confirm that
+                  we have successfully received your request with the following
+                  details:
+                </p>
+
+                <!-- RFQ Details -->
+                <table class="rfq-details" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td><strong>Company Name:</strong></td>
+                    <td>{{ company }}</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Email:</strong></td>
+                    <td>{{ email }}</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Phone Number:</strong></td>
+                    <td>{{ phone }}</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Managing Director:</strong></td>
+                    <td>{{ name }}</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Item Description:</strong></td>
+                    <td>{{ item }}</td>
+                  </tr>
+                  <tr>
+                    <td><strong>File:</strong></td>
+                    <td>
+                      <img
+                        src="{{ image_url }}"
+                        alt="Attached file"
+                        class="file-image"
+                      />
+                    </td>
+                  </tr>
+                </table>
+
+                <p>
+                  Our team is reviewing your request and will get back to you
+                  shortly with further details or a quotation.
+                </p>
+
+                <p>
+                  If you have any additional information to share, feel free to
+                  reply to this email.
+                </p>
+
+                <!-- CTA Button -->
+                <a href="{{ action_url }}" class="button">View RFQ Details</a>
+
+                <!-- Signature -->
+                <p>Best regards,</p>
+                <table class="signature-table" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td style="vertical-align: middle">
+                      <p>Lawal Abdur-Razaq</p>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <!-- Footer -->
+            <tr>
+              <td class="footer">
+                &copy; {{current_year}} Gh Procurement. All rights reserved.<br />
+                25 , Okota Road Isolo , Lagos , Nigeria
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

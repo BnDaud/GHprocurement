@@ -102,6 +102,38 @@ def sendEMailAPI(args):
       
 
 
+def sendRFQAPI(args):
+    access_token =  get_access_token()
+    account_id =  get_cached_account_id()
+    
+    html_content = render_to_string("RFQtemplate.html" , args)
+    subject = "Request Of Quote - Confirmed"
+   
+    recipient = args.get("email")
+  
+    from_email = settings.EMAIL_HOST_USER
+    
+    url = f"https://mail.zoho.com/api/accounts/{account_id}/messages"
+
+    
+    headers = {
+        "Authorization" :f"Zoho-oauthtoken {access_token}",
+        "Content-Type":"application/json"
+    }
+    
+    payload = {
+        "fromAddress":from_email,
+        "toAddress": recipient,
+        "subject" : subject,
+        "content":html_content
+    }
+    
+    response = requests.post(url, headers=headers, json=payload)
+    response.raise_for_status()
+    #print(response.json())
+    return response.json()
+    
+
 def SendRFQ(arg ):
     
     subject =  "Request Of Quote - Confirmed"
