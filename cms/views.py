@@ -56,13 +56,13 @@ class RFQView(ModelViewSet):
         
         data = request.data
         if serial.is_valid() :
-            print(serial.validated_data)
+            #print(serial.validated_data)
             instance = serial.save()
             data["image_url"] = instance.file.url
             # SendRFQ(data)
             threading.Thread(
         target=sendRFQAPI,
-        args=(serial.validated_data,)
+        args=(data,)
         ).start()
         
         
