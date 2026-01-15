@@ -8,7 +8,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
 from .fetchtwitter import FetchTwiter
-from .task import  sendEMailAPI ,sendRFQAPI , sendEMailSTMP_Method
+from .task import  sendEMailAPI ,sendRFQAPI , sendEMailAPI_Method
 import os , threading
 
 class UserView(ModelViewSet):
@@ -134,7 +134,7 @@ class EmailView(APIView):
         validated_data["attachments"] = attachments
 
         threading.Thread(
-            target=sendEMailSTMP_Method,
+            target=sendEMailAPI_Method,
             args=(validated_data,)
         ).start()
 

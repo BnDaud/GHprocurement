@@ -138,27 +138,31 @@ def sendRFQAPI(args):
     
 
 
-def sendEMailSTMP_Method(data):
+def sendEMailAPI_Method(data):
     subject = data["subject"]
     recipient = data["recipient"]
     attachments = data.get("attachments", [])
 
-    html_content = render_to_string("email.html", data)
+    html_content = render_to_string("email.html", {
+        "title": data["title"],
+        "body": data["body"],
+    })
 
     email = EmailMultiAlternatives(
         subject=subject,
         body="This email requires HTML support",
-        from_email=settings.DEFAULT_FROM_EMAIL,
+        from_email="GH Procurement <info@ghprocurement.com>",
         to=[recipient],
     )
 
     email.attach_alternative(html_content, "text/html")
 
+    # ✅ attachments are DICTS (by design)
     for file in attachments:
         email.attach(
             filename=file["name"],
-            content=file["content"],
-            mimetype=file["content_type"]
+            content=file["content"],          # raw bytes
+            mimetype=file["content_type"],
         )
 
     email.send(fail_silently=False)

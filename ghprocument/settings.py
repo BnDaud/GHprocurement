@@ -49,7 +49,7 @@ ALLOWED_HOSTS = ['ghprocurement.onrender.com', 'localhost', '127.0.0.1']
 
 # Application definition
 my_app = ["cms" , "rest_framework" , 'drf_yasg', 'cloudinary',
-    'cloudinary_storage',   "corsheaders",]
+    'cloudinary_storage',   "corsheaders", "anymail",]
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -172,7 +172,7 @@ CORS_ALLOWED_ORIGINS = [
     "http://192.168.0.129:3000",
     "http://127.0.0.1:3000",
 ]
-
+'''
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 
 EMAIL_HOST = "smtppro.zoho.com"
@@ -180,8 +180,17 @@ EMAIL_PORT = 465
 
 EMAIL_USE_SSL = True
 EMAIL_USE_TLS = False
-
+'''
 EMAIL_HOST_USER = os.getenv("EMAIL_SMTP")
 EMAIL_HOST_PASSWORD = os.getenv("PWORD")  # Zoho APP PASSWORD
 
 DEFAULT_FROM_EMAIL = os.getenv("EMAIL_DEFAULT")
+
+EMAIL_BACKEND = "anymail.backends.postmark.EmailBackend"
+
+ANYMAIL = {
+    "POSTMARK_SERVER_TOKEN": os.getenv("POSTMARK_SERVER_API"),
+}
+
+
+SERVER_EMAIL = DEFAULT_FROM_EMAIL

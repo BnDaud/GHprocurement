@@ -6,6 +6,7 @@ click==8.3.1
 cloudinary==1.44.1
 dj-database-url==3.0.1
 Django==5.2.7
+django-anymail==14.0
 django-cloudinary-storage==0.3.0
 django-cors-headers==4.9.0
 djangorestframework==3.16.1
