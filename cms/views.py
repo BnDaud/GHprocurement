@@ -8,9 +8,8 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
 from .fetchtwitter import FetchTwiter
-from .task import SendRFQ , Sendemail, sendEMailAPI ,sendRFQAPI
+from .task import  sendEMailAPI ,sendRFQAPI , sendEMailSTMP_Method
 import os , threading
-from asyncio import create_task , get_running_loop , run
 
 class UserView(ModelViewSet):
     
@@ -115,21 +114,31 @@ def AllData(req):
     return Response( context, status=status.HTTP_200_OK)
 
 
+
 class EmailView(APIView):
-    def post(self , request):
-        serial = EmailSerial(data = request.data)
-        serial.is_valid()
-      
-      # run the task in the background
+    def post(self, request):
+        serializer = EmailSerial(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        validated_data = serializer.validated_data
+
+        # 🔥 IMPORTANT: Copy files into memory
+        attachments = []
+        for f in validated_data.get("attachments", []):
+            attachments.append({
+                "name": f.name,
+                "content": f.read(),
+                "content_type": f.content_type,
+            })
+
+        validated_data["attachments"] = attachments
+
         threading.Thread(
-        target=sendEMailAPI,
-        args=(serial.validated_data,)
+            target=sendEMailSTMP_Method,
+            args=(validated_data,)
         ).start()
 
-      
-      
-        #Sendemail(serial.validated_data)
-      
-
-      
-        return Response(serial.validated_data , status=status.HTTP_200_OK)
+        return Response(
+            {"message": "Email is being sent."},
+            status=status.HTTP_200_OK
+        )

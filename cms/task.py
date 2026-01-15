@@ -1,7 +1,8 @@
-from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.conf import settings
-from django.utils.html import strip_tags
+import io
+import mimetypes
+from django.core.mail import EmailMultiAlternatives
 import os, requests
 from django.core.cache import cache
 
@@ -69,6 +70,9 @@ def get_cached_account_id():
     return account_id
 
 
+
+
+
 def sendEMailAPI(args):
     
     access_token =  get_access_token()
@@ -86,21 +90,20 @@ def sendEMailAPI(args):
         "Authorization" :f"Zoho-oauthtoken {access_token}",
         "Content-Type":"application/json"
     }
-    
+        
     payload = {
         "fromAddress":from_email,
         "toAddress": recipient,
         "subject" : subject,
         "content":html_content
-    }
+        }
+    
     
     response = requests.post(url, headers=headers, json=payload)
     response.raise_for_status()
     #print(response.json())
     return response.json()
        
-      
-
 
 def sendRFQAPI(args):
     access_token =  get_access_token()
@@ -111,7 +114,7 @@ def sendRFQAPI(args):
    
     recipient = args.get("email")
   
-    from_email = settings.EMAIL_HOST_USER
+    from_email = settings.DEFAULT_FROM_EMAIL 
     
     url = f"https://mail.zoho.com/api/accounts/{account_id}/messages"
 
@@ -134,38 +137,28 @@ def sendRFQAPI(args):
     return response.json()
     
 
-def SendRFQ(arg ):
-    
-    subject =  "Request Of Quote - Confirmed"
-    from_ = settings.EMAIL_HOST_USER
-    to_email = [arg.get("email")]
-    
-    html_content = render_to_string("RFQtemplate.html" , arg)
-    
-    text_content = strip_tags(html_content)
+
+def sendEMailSTMP_Method(data):
+    subject = data["subject"]
+    recipient = data["recipient"]
+    attachments = data.get("attachments", [])
+
+    html_content = render_to_string("email.html", data)
 
     email = EmailMultiAlternatives(
         subject=subject,
-        body = text_content,
-        from_email= from_,
-        to=to_email
+        body="This email requires HTML support",
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        to=[recipient],
     )
-    
-    email.attach_alternative(html_content , "text/html")
-    email.send()
-    
-def Sendemail(arg):
-    subject = arg.get("subject")
-    from_ = settings.EMAIL_HOST_USER
-    to_ = [arg.get("recipient")]
-    html_content = render_to_string("email.html" , arg)
-    
-    text_content = strip_tags(html_content)
-    
-    email = EmailMultiAlternatives(subject=subject,
-                                   body= text_content, from_email= from_, 
-                                   to=to_)
-    
-    email.attach_alternative(html_content , "text/html")
-    
-    email.send()
+
+    email.attach_alternative(html_content, "text/html")
+
+    for file in attachments:
+        email.attach(
+            filename=file["name"],
+            content=file["content"],
+            mimetype=file["content_type"]
+        )
+
+    email.send(fail_silently=False)

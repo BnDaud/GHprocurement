@@ -1,6 +1,8 @@
-from rest_framework.serializers import ModelSerializer , SerializerMethodField , ImageField , Serializer , CharField , EmailField
+from rest_framework.serializers import ModelSerializer , SerializerMethodField , ImageField , Serializer , CharField , EmailField ,  ListField , FileField
 from .models import User , Catalog,Service , FAQ ,MetaData , RFQ
 from django.contrib.auth.hashers import make_password
+from rest_framework.exceptions import ValidationError
+import os
 
 
 
@@ -124,4 +126,34 @@ class EmailSerial(Serializer):
     body = CharField(max_length = 5000 , required = True)
     subject = CharField(max_length = 200 , required = True)
     title = CharField(max_length = 200 , required = True)
-    recipient = EmailField()
+    recipient = EmailField(required = True)
+   
+
+    attachments = ListField(
+        child=FileField(),
+        required=False,
+        allow_empty=True
+    )
+
+    def validate_attachments(self, files):
+        MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+
+        allowed_types = [
+            "application/pdf",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            "image/jpeg",
+            "image/png",
+            "image/webp",
+        ]
+
+        for file in files:
+            if file.size > MAX_FILE_SIZE:
+                raise ValidationError(f"{file.name} is too large (max 10MB).")
+            if file.content_type not in allowed_types:
+                raise ValidationError(
+                    f"{file.name} has unsupported type {file.content_type}."
+                )
+
+        return files
