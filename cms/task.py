@@ -70,42 +70,11 @@ def get_cached_account_id():
     return account_id
 
 
-
-
-
-def sendEMailAPI(args):
-    
-    access_token =  get_access_token()
-    account_id =  get_cached_account_id()
-    
-    html_content = render_to_string("email.html" , args)
-    subject = args.get("subject")
-    recipient = args.get("recipient")
-    from_email = settings.EMAIL_HOST_USER
-    
-    url = f"https://mail.zoho.com/api/accounts/{account_id}/messages"
-
-    
-    headers = {
-        "Authorization" :f"Zoho-oauthtoken {access_token}",
-        "Content-Type":"application/json"
-    }
-        
-    payload = {
-        "fromAddress":from_email,
-        "toAddress": recipient,
-        "subject" : subject,
-        "content":html_content
-        }
-    
-    
-    response = requests.post(url, headers=headers, json=payload)
-    response.raise_for_status()
-    #print(response.json())
-    return response.json()
-       
+ 
 
 def sendRFQAPI(args):
+
+    # this method send mails using zoho api
     access_token =  get_access_token()
     account_id =  get_cached_account_id()
     
@@ -139,6 +108,7 @@ def sendRFQAPI(args):
 
 
 def sendEMailAPI_Method(data):
+    # this method uses postmark api to send on behalf of zoho mails because it sometimes takes attachment
     subject = data["subject"]
     recipient = data["recipient"]
     attachments = data.get("attachments", [])

@@ -8,7 +8,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
 from .fetchtwitter import FetchTwiter
-from .task import  sendEMailAPI ,sendRFQAPI , sendEMailAPI_Method
+from .task import  sendRFQAPI , sendEMailAPI_Method
 import os , threading
 
 class UserView(ModelViewSet):
