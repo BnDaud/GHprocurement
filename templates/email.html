@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -131,10 +131,9 @@
                         line-height: 1.4;
                       "
                     >
-                      <div style="
-                        font-size: 15px;
-                        color: #420e51;
-                      ">Gh Procurement</div>
+                      <div style="font-size: 15px; color: #420e51">
+                        Gh Procurement
+                      </div>
                       <div>Email: info@ghprocurement.com</div>
                       <div>Phone: 08057962920</div>
                       <div>Website: ghprocurement.com</div>
@@ -148,7 +147,7 @@
             <tr>
               <td style="padding: 20px">
                 <h2>{{ title }}</h2>
-                <div class="body-text">{{ body }}</div>
+                <div class="body-text">{{ body | linebreaks }}</div>
 
                 <!-- Signature -->
                 <table
@@ -160,9 +159,9 @@
                   style="margin-top: 30px"
                 >
                   <tr>
-              <div>Regrads</div>
-              <div>Lawal Abdur-Razaq</div>
-            </tr>
+                    <div>Regrads</div>
+                    <div>Lawal Abdur-Razaq</div>
+                  </tr>
                 </table>
               </td>
             </tr>
