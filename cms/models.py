@@ -112,8 +112,12 @@ class SentEmail(models.Model):
     recipient = models.EmailField()
     recipient_name = models.CharField(max_length=200, blank=True)
     subject = models.CharField(max_length=200)
+    title = models.CharField(max_length=200, blank=True)
+    body = models.TextField(blank=True)
     valid_days = models.PositiveSmallIntegerField(null=True, blank=True)
     attachments_count = models.PositiveSmallIntegerField(default=0)
+    # [{"name": ..., "size": bytes, "type": mime}] -- names only, never the files
+    attachments_info = models.JSONField(default=list, blank=True)
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.QUEUED)
     error = models.TextField(blank=True)
     provider_message_id = models.CharField(max_length=100, blank=True)

@@ -21,3 +21,6 @@ REST_FRAMEWORK = {  # noqa: F405
     "DEFAULT_THROTTLE_RATES": {"login": "1000/min", "password": "1000/min"},
 }
 PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]  # fast tests only
+
+if os.environ.get("TEST_LOCMEM_EMAIL"):  # local checks that must not send real mail
+    EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"

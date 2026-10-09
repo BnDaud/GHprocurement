@@ -1,5 +1,5 @@
 from rest_framework.serializers import ChoiceField, IntegerField, ModelSerializer , SerializerMethodField , ImageField , Serializer , CharField , EmailField ,  ListField , FileField
-from .models import User , Catalog,Service , FAQ ,MetaData , RFQ
+from .models import User , Catalog,Service , FAQ ,MetaData , RFQ , SentEmail
 from django.contrib.auth.hashers import make_password
 from rest_framework.exceptions import ValidationError
 import os
@@ -204,3 +204,25 @@ class EmailSerial(Serializer):
                 f"the limit is {MAX_TOTAL_SIZE // (1024 * 1024)} MB per email."
             )
         return files
+
+
+class SentEmailListSerial(ModelSerializer):
+    """One row of the history table (no message body, to keep the list light)."""
+
+    attachments = SerializerMethodField()
+
+    class Meta:
+        model = SentEmail
+        fields = ["id", "reference", "kind", "recipient", "recipient_name", "subject",
+                  "valid_days", "attachments_count", "attachments", "status",
+                  "created_at", "sent_at"]
+
+    def get_attachments(self, obj):
+        return obj.attachments_info
+
+
+class SentEmailSerial(SentEmailListSerial):
+    """The full record, including what was written."""
+
+    class Meta(SentEmailListSerial.Meta):
+        fields = SentEmailListSerial.Meta.fields + ["title", "body", "error", "provider_message_id"]

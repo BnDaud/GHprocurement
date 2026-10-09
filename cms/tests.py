@@ -527,3 +527,96 @@ class SendFlow(AuthTestBase):
     def test_still_requires_admin_sign_in(self):
         self.assertEqual(self.post(self.anon, kind="rfq_reply").status_code, 401)
         self.assertEqual(SentEmail.objects.count(), 0)
+
+
+# ---------------------------------------------------------------------------
+# sent-mail history: what is kept, and that it is admin-only and read-only
+# ---------------------------------------------------------------------------
+class SentMailHistory(SendFlow):
+    def send(self, client, files=None, **extra):
+        data = {"recipient": "buyer@acme.com", "subject": "Quote", "title": "Your quote",
+                "body": "Hello there.\n\nSecond paragraph.", "kind": "rfq_reply", "recipient_name": "Sulaimon"}
+        data.update(extra)
+        if files:
+            data["attachments"] = files
+        with self.run_inline(), self.send_patch():
+            return client.post("/api/emails/", data, format="multipart")
+
+    def admin_client(self):
+        return self.client_for(self.login().data["token"])
+
+    def test_keeps_the_text_and_attachment_names_and_sizes_but_not_the_files(self):
+        c = self.admin_client()
+        files = [up("price-list.pdf", PDF + b"x" * 900, "application/pdf"), up("photo.png", PNG + b"y" * 300, "image/png")]
+        self.assertEqual(self.send(c, files).status_code, 200)
+        rec = SentEmail.objects.get()
+        self.assertEqual((rec.title, rec.body), ("Your quote", "Hello there.\n\nSecond paragraph."))
+        self.assertEqual(rec.attachments_count, 2)
+        self.assertEqual([a["name"] for a in rec.attachments_info], ["price-list.pdf", "photo.png"])
+        self.assertEqual([a["size"] for a in rec.attachments_info], [len(PDF) + 900, len(PNG) + 300])
+        self.assertEqual({a["type"] for a in rec.attachments_info}, {"application/pdf", "image/png"})
+        # nothing in the stored row contains the file bytes
+        stored = repr(rec.attachments_info) + rec.body + rec.title + rec.error
+        self.assertNotIn("xxxxxxxxxx", stored)
+        self.assertNotIn("%PDF", stored)
+
+    def test_no_attachments_is_an_empty_list(self):
+        self.send(self.admin_client())
+        rec = SentEmail.objects.get()
+        self.assertEqual((rec.attachments_count, rec.attachments_info), (0, []))
+
+    def test_list_is_newest_first_and_leaves_out_the_body(self):
+        c = self.admin_client()
+        self.send(c, subject="first")
+        self.send(c, subject="second")
+        r = c.get("/api/sent-emails/")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual([row["subject"] for row in r.data], ["second", "first"])
+        self.assertNotIn("body", r.data[0])
+        self.assertEqual(r.data[0]["recipient"], "buyer@acme.com")
+        self.assertRegex(r.data[0]["reference"], r"^GHP-\d{4}-0002$")
+
+    def test_detail_has_the_full_text_and_attachment_names(self):
+        c = self.admin_client()
+        self.send(c, [up("terms.pdf", PDF, "application/pdf")])
+        rec = SentEmail.objects.get()
+        r = c.get(f"/api/sent-emails/{rec.pk}/")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data["body"], "Hello there.\n\nSecond paragraph.")
+        self.assertEqual(r.data["title"], "Your quote")
+        self.assertEqual(r.data["attachments"][0]["name"], "terms.pdf")
+        self.assertEqual(r.data["status"], "sent")
+
+    def test_failed_send_shows_up_with_its_error(self):
+        c = self.admin_client()
+        with self.run_inline(), mock.patch("cms.task.EmailMultiAlternatives.send", side_effect=RuntimeError("provider down")):
+            with self.assertRaises(RuntimeError):
+                c.post("/api/emails/", {"recipient": "a@b.com", "subject": "S", "title": "T", "body": "B"}, format="multipart")
+        r = c.get(f"/api/sent-emails/{SentEmail.objects.get().pk}/")
+        self.assertEqual((r.data["status"], "provider down" in r.data["error"]), ("failed", True))
+
+    def test_list_is_capped(self):
+        from .views import SentEmailView
+        for i in range(5):
+            _rec("outreach", subject=f"s{i}")
+        with mock.patch.object(SentEmailView, "MAX_LIST", 3):
+            r = self.admin_client().get("/api/sent-emails/")
+        self.assertEqual(len(r.data), 3)
+
+    def test_admin_only(self):
+        self.send(self.admin_client())
+        pk = SentEmail.objects.get().pk
+        self.assertEqual(self.anon.get("/api/sent-emails/").status_code, 401)
+        self.assertEqual(self.anon.get(f"/api/sent-emails/{pk}/").status_code, 401)
+        customer = self.client_for(make_token(self.customer))
+        self.assertEqual(customer.get("/api/sent-emails/").status_code, 403)
+
+    def test_read_only_through_the_api(self):
+        c = self.admin_client()
+        self.send(c)
+        pk = SentEmail.objects.get().pk
+        self.assertEqual(c.post("/api/sent-emails/", {}, format="json").status_code, 405)
+        self.assertEqual(c.put(f"/api/sent-emails/{pk}/", {}, format="json").status_code, 405)
+        self.assertEqual(c.patch(f"/api/sent-emails/{pk}/", {"subject": "edited"}, format="json").status_code, 405)
+        self.assertEqual(c.delete(f"/api/sent-emails/{pk}/").status_code, 405)
+        self.assertEqual(SentEmail.objects.get().subject, "Quote")

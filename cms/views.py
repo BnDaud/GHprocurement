@@ -1,10 +1,10 @@
 from django.shortcuts import render
 from .models import User ,Catalog, FAQ , MetaData , Service , RFQ , SentEmail
 from .references import create_sent_email
-from .serial import UserSerial , CatalogSerial , MetaDataSerial , FAQSerial , ServicesSerial , RFQSerial , EmailSerial
+from .serial import SentEmailListSerial , SentEmailSerial , UserSerial , CatalogSerial , MetaDataSerial , FAQSerial , ServicesSerial , RFQSerial , EmailSerial
 # Create your views here.
 from rest_framework.views import APIView
-from rest_framework.viewsets import ModelViewSet
+from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -144,6 +144,12 @@ class EmailView(APIView):
             recipient=validated_data["recipient"],
             recipient_name=validated_data.get("recipient_name", ""),
             subject=validated_data["subject"],
+            title=validated_data["title"],
+            body=validated_data["body"],
+            attachments_info=[
+                {"name": f.name, "size": f.size, "type": f.content_type}
+                for f in validated_data.get("attachments", [])
+            ],  # names and sizes only: the files themselves are never stored
             valid_days=validated_data.get("valid_days") if validated_data["kind"] == "rfq_reply" else None,
             attachments_count=len(validated_data.get("attachments", [])),
         )
@@ -171,3 +177,18 @@ class EmailView(APIView):
             {"message": "Email is being sent.", "reference": record.reference},
             status=status.HTTP_200_OK
         )
+
+
+
+class SentEmailView(ReadOnlyModelViewSet):
+    """History of emails sent from the CMS (admin only, read only)."""
+
+    queryset = SentEmail.objects.all()
+    MAX_LIST = 500
+
+    def get_serializer_class(self):
+        return SentEmailSerial if self.action == "retrieve" else SentEmailListSerial
+
+    def list(self, request, *args, **kwargs):
+        newest = self.get_queryset()[: self.MAX_LIST]
+        return Response(self.get_serializer(newest, many=True).data)
