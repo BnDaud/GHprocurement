@@ -279,9 +279,10 @@ class AdminView(ViewSet):
 
 
 class InboxView(ReadOnlyModelViewSet):
-    """Mail received at the company address (admin only). The only thing an
-    admin can change is read/unread: messages cannot be created, edited or
-    deleted here."""
+    """Mail received at the company address (admin only). An admin can mark
+    mail read/unread and delete it from the CMS. Messages cannot be created or
+    edited here, and deleting only removes the CMS's own copy: the company
+    mailbox (Zoho) is never touched."""
 
     queryset = InboxMessage.objects.all()
     MAX_LIST = 500
@@ -307,6 +308,31 @@ class InboxView(ReadOnlyModelViewSet):
         message.is_read = bool(value)
         message.save(update_fields=["is_read"])
         return Response(InboxListSerial(message).data)
+
+    def destroy(self, request, *args, **kwargs):
+        self.get_object().delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=False, methods=["post"], url_path="bulk-delete")
+    def bulk_delete(self, request):
+        """POST {"ids": [...]} deletes those messages; POST {"spam": true}
+        deletes every message flagged as spam. Returns how many were deleted."""
+        import uuid
+
+        ids, spam = request.data.get("ids"), request.data.get("spam")
+        if isinstance(spam, str):
+            spam = spam.lower() in ("1", "true", "yes")
+        if spam is True and not ids:
+            qs = InboxMessage.objects.filter(is_spam=True)
+        elif isinstance(ids, list) and 0 < len(ids) <= 500 and spam is not True:
+            try:
+                clean = [uuid.UUID(str(i)) for i in ids]
+            except (ValueError, AttributeError):
+                return Response({"detail": "Invalid message id."}, status=status.HTTP_400_BAD_REQUEST)
+            qs = InboxMessage.objects.filter(pk__in=clean)
+        else:
+            return Response({"detail": "Send either ids (1 to 500) or spam: true."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"deleted": qs.delete()[0]})
 
     @action(detail=False, methods=["post"], url_path="mark-all-read")
     def mark_all_read(self, request):
