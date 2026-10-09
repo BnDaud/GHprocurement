@@ -1,6 +1,6 @@
 from rest_framework.routers import DefaultRouter
 from django.http import HttpResponse
-from .views import SentEmailView , UserView ,  CatalogView , getTotalView , AllData , ServicesView, FAQView ,  EmailView,MetaDataView , RFQView
+from .views import AdminView , SentEmailView , UserView ,  CatalogView , getTotalView , AllData , ServicesView, FAQView ,  EmailView,MetaDataView , RFQView
 from .auth_views import (LoginView, LoginMfaView, MeView, ChangePasswordView, MfaSetupView,
                          MfaConfirmView, MfaDisableView, MfaRecoveryCodesView)
 from django.urls import path , include
@@ -15,6 +15,7 @@ routes.register("faqs" ,FAQView , basename="FAQs")
 routes.register("metadata" , MetaDataView , basename="metadata")
 routes.register("rfqs", RFQView , basename="rfqs")
 routes.register("sent-emails", SentEmailView , basename="sent-emails")
+routes.register("admins", AdminView , basename="admins")
 
 
 

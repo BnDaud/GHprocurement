@@ -1,10 +1,10 @@
 from django.shortcuts import render
 from .models import User ,Catalog, FAQ , MetaData , Service , RFQ , SentEmail
 from .references import create_sent_email
-from .serial import SentEmailListSerial , SentEmailSerial , UserSerial , CatalogSerial , MetaDataSerial , FAQSerial , ServicesSerial , RFQSerial , EmailSerial
+from .serial import AdminCreateSerial , AdminSerial , SentEmailListSerial , SentEmailSerial , UserSerial , CatalogSerial , MetaDataSerial , FAQSerial , ServicesSerial , RFQSerial , EmailSerial
 # Create your views here.
 from rest_framework.views import APIView
-from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
+from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet, ViewSet
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -12,12 +12,17 @@ from rest_framework import status
 from .fetchtwitter import FetchTwiter
 from .task import  sendRFQAPI , sendEMailAPI_Method
 import os , threading
-from .permissions import IsCMSAdminOrReadOnly
+from django.db.models import Q
+from django.core.exceptions import ValidationError as DjangoValidationError
+from .permissions import IsCMSAdminOrReadOnly, IsSuperAdmin, is_super_admin
 
 class UserView(ModelViewSet):
-    
+    """Ordinary accounts (customers and contacts). Administrators are not
+    listed here and cannot be changed or deleted through this endpoint; they
+    are managed under /api/admins/ by a super admin."""
+
     serializer_class = UserSerial
-    queryset = User.objects.all()
+    queryset = User.objects.filter(is_staff=False, is_superuser=False)
     
    # for i in PortfolioImages.objects.all():
     #    print(i.image.url)
@@ -88,7 +93,7 @@ def getTotalView(req):
     
     blogs = Catalog.objects.count()
   
-    user = User.objects.count()
+    user = User.objects.filter(is_staff=False, is_superuser=False).count()  # accounts, not admins
     services = Service.objects.count()
     faq = FAQ.objects.count()
     
@@ -192,3 +197,67 @@ class SentEmailView(ReadOnlyModelViewSet):
     def list(self, request, *args, **kwargs):
         newest = self.get_queryset()[: self.MAX_LIST]
         return Response(self.get_serializer(newest, many=True).data)
+
+
+class AdminView(ViewSet):
+    """Administrators: the accounts that can sign in to the CMS. Only a super
+    admin may list, add or remove them. Super admins themselves can never be
+    deleted, by anyone."""
+
+    permission_classes = [IsSuperAdmin]
+
+    def _admins(self):
+        return User.objects.select_related("mfa").filter(Q(is_staff=True) | Q(is_superuser=True))
+
+    def list(self, request):
+        admins = self._admins().order_by("-is_superuser", "date_joined")
+        return Response(AdminSerial(admins, many=True).data)
+
+    def create(self, request):
+        from django.contrib.auth.password_validation import validate_password
+        from django.core.exceptions import ValidationError as DjangoValidationError
+
+        data = AdminCreateSerial(data=request.data)
+        data.is_valid(raise_exception=True)
+        d = data.validated_data
+        email = d["email"].strip()
+
+        if User.objects.filter(email__iexact=email).exists():
+            return Response({"detail": "An account with this email already exists."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        base = (email.split("@")[0] or "admin")[:30]
+        username, n = base, 1
+        while User.objects.filter(username=username).exists():
+            n += 1
+            username = f"{base}{n}"
+
+        candidate = User(username=username, email=email, first_name=d["first_name"], last_name=d["last_name"])
+        try:
+            validate_password(d["password"], candidate)
+        except DjangoValidationError as e:
+            return Response({"detail": " ".join(e.messages)}, status=status.HTTP_400_BAD_REQUEST)
+
+        # a regular admin: can use the CMS, but is not a super admin
+        user = User.objects.create_user(
+            username=username, email=email, password=d["password"],
+            first_name=d["first_name"], last_name=d["last_name"],
+            is_staff=True, is_superuser=False, dp="", phone="",
+        )
+        return Response(AdminSerial(user).data, status=status.HTTP_201_CREATED)
+
+    def destroy(self, request, pk=None):
+        try:
+            target = self._admins().filter(pk=pk).first()
+        except (ValueError, DjangoValidationError):
+            target = None
+        if target is None:
+            return Response({"detail": "Administrator not found."}, status=status.HTTP_404_NOT_FOUND)
+        if is_super_admin(target):
+            return Response({"detail": "A super admin cannot be deleted."}, status=status.HTTP_403_FORBIDDEN)
+        if target.is_superuser:
+            # e.g. the owner's own server account: not something to remove from the CMS
+            return Response({"detail": "This account has full server access, so it cannot be deleted here."},
+                            status=status.HTTP_403_FORBIDDEN)
+        target.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)

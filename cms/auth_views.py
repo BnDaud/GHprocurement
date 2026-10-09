@@ -1,4 +1,5 @@
 from django.contrib.auth.hashers import make_password
+from django.contrib.auth.models import update_last_login
 from django.contrib.auth.password_validation import validate_password
 from django.core import signing
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -12,7 +13,7 @@ from rest_framework.views import APIView
 from . import mfa
 from .authentication import TOKEN_MAX_AGE, make_token
 from .models import MFADevice, User
-from .permissions import IsCMSAdmin
+from .permissions import IsCMSAdmin, is_super_admin
 
 MFA_STEP_SALT = "cms-mfa-step"
 MFA_STEP_MAX_AGE = 5 * 60  # five minutes to type the code after the password
@@ -23,6 +24,7 @@ def _user_payload(user):
         "id": str(user.pk),
         "email": user.email,
         "username": user.username,
+        "is_super_admin": is_super_admin(user),
         "name": f"{user.first_name} {user.last_name}".strip(),
         "mfa_enabled": mfa.is_enabled(user),
     }
@@ -74,6 +76,7 @@ class LoginView(APIView):
             step_token = signing.dumps({"uid": str(user.pk)}, salt=MFA_STEP_SALT)
             return Response({"mfa_required": True, "mfa_token": step_token})
 
+        update_last_login(None, user)  # so the super admin can see who has been active
         return Response(_session(user))
 
 
@@ -114,6 +117,7 @@ class LoginMfaView(APIView):
             return _bad("That code is not right. Check the code in your app and try again.", status.HTTP_401_UNAUTHORIZED)
 
         device.refresh_from_db()
+        update_last_login(None, user)
         return Response(_session(user, used_recovery_code=used == "recovery", recovery_codes_left=len(device.recovery_hashes)))
 
 

@@ -226,3 +226,39 @@ class SentEmailSerial(SentEmailListSerial):
 
     class Meta(SentEmailListSerial.Meta):
         fields = SentEmailListSerial.Meta.fields + ["title", "body", "error", "provider_message_id"]
+
+
+class AdminSerial(ModelSerializer):
+    """How an administrator is shown in the CMS (never includes the password)."""
+
+    name = SerializerMethodField()
+    role = SerializerMethodField()
+    mfa_enabled = SerializerMethodField()
+    protected = SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = ["id", "email", "username", "first_name", "last_name", "name", "role",
+                  "protected", "mfa_enabled", "is_active", "date_joined", "last_login"]
+
+    def get_protected(self, obj):
+        # accounts with server-level access can never be deleted from the CMS
+        return bool(obj.is_superuser)
+
+    def get_name(self, obj):
+        return f"{obj.first_name} {obj.last_name}".strip()
+
+    def get_role(self, obj):
+        from .permissions import is_super_admin
+        return "super_admin" if is_super_admin(obj) else "admin"
+
+    def get_mfa_enabled(self, obj):
+        device = getattr(obj, "mfa", None)
+        return bool(device and device.confirmed)
+
+
+class AdminCreateSerial(Serializer):
+    email = EmailField(required=True)
+    password = CharField(required=True, write_only=True, trim_whitespace=False, max_length=128)
+    first_name = CharField(required=False, allow_blank=True, max_length=150, default="")
+    last_name = CharField(required=False, allow_blank=True, max_length=150, default="")

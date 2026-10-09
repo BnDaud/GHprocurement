@@ -172,6 +172,15 @@ LOGGING = {
     "loggers": {"cms": {"handlers": ["console"], "level": "INFO"}},
 }
 
+# Who is the CMS "super admin": can add and remove other admins, and can never
+# be deleted. Comma-separated emails; the account must also be a Django
+# superuser. Change later with the CMS_SUPER_ADMIN_EMAILS environment variable.
+CMS_SUPER_ADMIN_EMAILS = [
+    e.strip().lower()
+    for e in os.getenv("CMS_SUPER_ADMIN_EMAILS", "info@ghprocurement.com").split(",")
+    if e.strip()
+]
+
 REST_FRAMEWORK = {
     # secure by default: a view is admin-only unless it says otherwise
     "DEFAULT_AUTHENTICATION_CLASSES": ["cms.authentication.SignedTokenAuthentication"],
