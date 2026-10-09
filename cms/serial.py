@@ -69,7 +69,18 @@ class CatalogSerial(ModelSerializer):
 class MetaDataSerial(ModelSerializer):
     class Meta:
         model = MetaData
-        fields = "__all__"
+        exclude = ["experience_year"]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data["experience"] = instance.years_of_experience  # today's figure, not the one typed in
+        return data
+
+    def update(self, instance, validated_data):
+        if "experience" in validated_data:
+            from .models import current_year
+            instance.experience_year = current_year()  # what the owner types is "this year's" figure
+        return super().update(instance, validated_data)
 
 class FAQSerial(ModelSerializer):
     class Meta:

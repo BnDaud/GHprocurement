@@ -4,6 +4,8 @@ from cloudinary.models import CloudinaryField
 from django.contrib.auth.models import AbstractUser
 from uuid import uuid4
 from decimal import Decimal
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from django.utils import timezone
 
 class User (AbstractUser):
@@ -52,6 +54,11 @@ class Catalog(models.Model):
        return self.name or str(self.id)
     
 
+def current_year():
+    """The year it is now in Lagos (so the count goes up at midnight on 1 January there)."""
+    return datetime.now(ZoneInfo("Africa/Lagos")).year
+
+
 class MetaData(models.Model):
       metaIntro = models.TextField(max_length=2000)
       
@@ -60,7 +67,10 @@ class MetaData(models.Model):
       ordersCompleted= models.PositiveIntegerField(default=0)
       
       suppliers = models.PositiveIntegerField(default=0)
+      # "years of experience" as the owner last typed it, and the year they typed it:
+      # the number shown on the site goes up by one every 1 January by itself
       experience = models.SmallIntegerField(default=0)
+      experience_year = models.PositiveSmallIntegerField(default=current_year, editable=False)
     
       email = models.EmailField()
       
@@ -80,6 +90,10 @@ class MetaData(models.Model):
           ("AED", "UAE dirham (AED)"),
       ]
       currency = models.CharField(max_length=3, choices=CURRENCIES, default="USD")
+
+      @property
+      def years_of_experience(self):
+          return max(0, self.experience + (current_year() - self.experience_year))
       
 class Service(models.Model):
     
