@@ -7,13 +7,14 @@ from .serial import InboxListSerial , InboxSerial , AdminCreateSerial , AdminSer
 from rest_framework.views import APIView
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet, ViewSet
 from rest_framework.decorators import action
-from rest_framework.decorators import api_view, authentication_classes, permission_classes
+from rest_framework.decorators import api_view, authentication_classes, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework import status
 from .fetchtwitter import FetchTwiter
 from .task import  sendRFQAPI , sendEMailAPI_Method
 import os , threading
+from django.conf import settings
 from django.db.models import Q
 from django.core.exceptions import ValidationError as DjangoValidationError
 from .permissions import IsCMSAdminOrReadOnly, IsSuperAdmin, is_super_admin
@@ -103,7 +104,13 @@ class RFQView(AuditedMixin, ModelViewSet):
             instance = serial.save()
             tracking.rfq_limit_count(request)
             log(None, A.QUOTE_RECEIVED, "quote request", f"{instance.reference}: {instance.name} ({instance.company})")
-            tracking.in_background(tracking.email_request_received, str(instance.pk), bool(getattr(instance, "_new_account", False)))
+            if settings.CUSTOMER_PORTAL_LIVE:
+                tracking.in_background(tracking.email_request_received, str(instance.pk), bool(getattr(instance, "_new_account", False)))
+            else:
+                # the customer pages are not live yet: send the original confirmation (no links to them)
+                legacy = {k: request.data.get(k, "") for k in ("name", "email", "company", "phone", "item")}
+                legacy["image_url"] = instance.file.url if instance.file else ""
+                threading.Thread(target=sendRFQAPI, args=(legacy,), daemon=True).start()
             return Response({"reference": instance.reference, "email": instance.email, "id": str(instance.pk),
                              "new_account": bool(getattr(instance, "_new_account", False))}, status=status.HTTP_200_OK)
         
@@ -134,10 +141,11 @@ class RFQView(AuditedMixin, ModelViewSet):
     def updates(self, request, pk=None):
         rfq = self.get_object()
         if request.method == "GET":
-            return Response(tracking.request_detail(rfq)["updates"])
+            return Response(tracking.request_detail(rfq, admin=True)["updates"])
         d, errors, delivery = self._update_body(request)
         if errors:
             return Response({"detail": " ".join(errors.values()), "fields": errors}, status=status.HTTP_400_BAD_REQUEST)
+        before = rfq.status
         update = tracking.add_update(rfq, d["stage"], d["headline"], str(d.get("details", "")),
                                      str(d.get("location", "")), created_by=request.user)
         if delivery not in (None, ""):
@@ -146,11 +154,16 @@ class RFQView(AuditedMixin, ModelViewSet):
         notify = d.get("notify", True)
         if isinstance(notify, str):
             notify = notify.lower() in ("1", "true", "yes", "on")
+        # customers are only emailed once the customer site (the pages the email links to) is live
+        emailed = bool(notify and settings.CUSTOMER_PORTAL_LIVE)
+        moved = tracking.STAGE_LABELS.get(before) != tracking.STAGE_LABELS.get(update.stage)
+        what = (f"moved from {tracking.STAGE_LABELS.get(before)} to {tracking.STAGE_LABELS.get(update.stage)}" if moved
+                else f"note at {tracking.STAGE_LABELS.get(update.stage)}")
         log(request, A.CREATED, "order update", f"{rfq.reference}: {update.headline}",
-            f"stage {update.stage}" + ("" if notify else ", customer not emailed"))
-        if notify:
+            f"{what}; " + ("customer emailed" if emailed else "customer not emailed"))
+        if emailed:
             tracking.in_background(tracking.email_update, str(update.pk))
-        return Response(tracking.request_detail(rfq), status=status.HTTP_201_CREATED)
+        return Response({**tracking.request_detail(rfq, admin=True), "emailed": emailed}, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["patch", "delete"], url_path=r"updates/(?P<update_id>[0-9a-fA-F-]{32,36})")
     def update_item(self, request, pk=None, update_id=None):
@@ -162,20 +175,23 @@ class RFQView(AuditedMixin, ModelViewSet):
             label = f"{rfq.reference}: {update.headline}"
             update.delete()
             tracking.recompute_status(rfq)
-            log(request, A.DELETED, "order update", label)
-            return Response(tracking.request_detail(rfq))
+            log(request, A.DELETED, "order update", label, f"stage was {tracking.STAGE_LABELS.get(update.stage)}")
+            return Response(tracking.request_detail(rfq, admin=True))
         d, errors, delivery = self._update_body(request, partial=True)
         if errors:
             return Response({"detail": " ".join(errors.values()), "fields": errors}, status=status.HTTP_400_BAD_REQUEST)
         changed = []
+        old_stage = update.stage
         for field in ("stage", "headline", "details", "location"):
             if field in d:
                 setattr(update, field, str(d[field]).strip())
                 changed.append(field)
         update.save()
         tracking.recompute_status(rfq)
-        log(request, A.UPDATED, "order update", f"{rfq.reference}: {update.headline}", "fields: " + ", ".join(changed))
-        return Response(tracking.request_detail(rfq))
+        stage_note = (f"; stage changed from {tracking.STAGE_LABELS.get(old_stage)} to {tracking.STAGE_LABELS.get(update.stage)}"
+                      if update.stage != old_stage else "")
+        log(request, A.UPDATED, "order update", f"{rfq.reference}: {update.headline}", "fields: " + ", ".join(changed) + stage_note)
+        return Response(tracking.request_detail(rfq, admin=True))
     
 @api_view(["GET"])
 def getTotalView(req):
@@ -208,7 +224,7 @@ def AllData(req):  # public: feeds the customer website
     
     catalog = CatalogSerial(Catalog.objects.all(), many=True).data
     service = ServicesSerial(Service.objects.all() , many=True).data
-    metadata = MetaData.objects.values()
+    metadata = MetaDataSerial(MetaData.objects.all(), many=True).data
     faq = FAQSerial(FAQ.objects.all() ,many=True).data
     tweets = tweet.getTweets()    
     
@@ -449,6 +465,9 @@ class AuditView(ReadOnlyModelViewSet):
         action = request.query_params.get("action")
         if action:
             qs = qs.filter(action__in=[a for a in action.split(",") if a in AuditLog.Action.values])
+        target = request.query_params.get("target", "").strip()
+        if target:
+            qs = qs.filter(target_type=target)
         who = request.query_params.get("actor", "").strip()
         if who:
             qs = qs.filter(actor_email__icontains=who)
@@ -462,3 +481,24 @@ class AuditView(ReadOnlyModelViewSet):
         total = qs.count()
         rows = qs[offset: offset + self.PAGE]
         return Response({"total": total, "offset": offset, "results": self.get_serializer(rows, many=True).data})
+
+
+
+@api_view(["GET", "HEAD"])
+@authentication_classes([])
+@permission_classes([AllowAny])
+@throttle_classes([])
+def health(request):
+    """For uptime monitors: public, no sign-in, nothing private in the answer.
+    200 when the site and its database answer, 503 when the database does not."""
+    from django.db import connection
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+        up = True
+    except Exception:  # noqa: BLE001
+        up = False
+    response = Response({"status": "ok" if up else "down"}, status=200 if up else 503)
+    response["Cache-Control"] = "no-store"
+    return response

@@ -70,7 +70,18 @@ class CatalogSerial(ModelSerializer):
 class MetaDataSerial(ModelSerializer):
     class Meta:
         model = MetaData
-        fields = "__all__"
+        exclude = ["experience_year"]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data["experience"] = instance.years_of_experience  # today's figure, not the one typed in
+        return data
+
+    def update(self, instance, validated_data):
+        if "experience" in validated_data:
+            from .models import current_year
+            instance.experience_year = current_year()  # what the owner types is "this year's" figure
+        return super().update(instance, validated_data)
 
 class FAQSerial(ModelSerializer):
     class Meta:
@@ -102,7 +113,8 @@ class RFQSerial(ModelSerializer):
         return obj.file.url if obj.file else None
 
     def validate(self, attrs):
-        if self.instance is None and attrs.get("consent") is not True:
+        from django.conf import settings
+        if self.instance is None and settings.CUSTOMER_PORTAL_LIVE and attrs.get("consent") is not True:
             raise serializers.ValidationError(
                 {"consent": "Please agree so we can reply and create your account."})
         return attrs

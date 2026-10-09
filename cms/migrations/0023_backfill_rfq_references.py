@@ -17,5 +17,5 @@ def backfill(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-    dependencies = [("cms", "0019_tracking")]
+    dependencies = [("cms", "0022_tracking")]
     operations = [migrations.RunPython(backfill, migrations.RunPython.noop)]

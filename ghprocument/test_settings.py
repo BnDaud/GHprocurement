@@ -32,3 +32,6 @@ if os.environ.get("TEST_FILE_EMAIL"):  # local checks: write each email to a fil
     EMAIL_FILE_PATH = os.environ["TEST_FILE_EMAIL"]
     if os.environ.get("TEST_REAL_MAIL_TO"):  # ...but really deliver mail to these (own) addresses
         EMAIL_BACKEND = "cms.devmail.AllowlistBackend"
+TWITTER_REFRESH_SYNC = True
+
+CUSTOMER_PORTAL_LIVE = os.environ.get("TEST_PORTAL_OFF") is None  # tests run with the portal on, unless a test turns it off

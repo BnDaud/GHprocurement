@@ -63,8 +63,8 @@ def request_summary(rfq):
     }
 
 
-def request_detail(rfq):
-    updates = list(rfq.updates.order_by("-created_at"))
+def request_detail(rfq, admin=False):
+    updates = list(rfq.updates.select_related("created_by").order_by("-created_at"))
     first_seen = {}
     for u in reversed(updates):
         first_seen.setdefault(u.stage, u.created_at)
@@ -90,6 +90,8 @@ def request_detail(rfq):
                 "id": str(u.pk), "stage": u.stage, "stage_label": STAGE_LABELS.get(u.stage, u.stage),
                 "headline": u.headline, "details": u.details, "location": u.location,
                 "created_at": u.created_at,
+                # who posted it: for the CMS only, never shown to customers
+                **({"posted_by": (u.created_by.email or u.created_by.username) if u.created_by else ""} if admin else {}),
             }
             for u in updates
         ],

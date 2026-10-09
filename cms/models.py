@@ -4,6 +4,8 @@ from cloudinary.models import CloudinaryField
 from django.contrib.auth.models import AbstractUser
 from uuid import uuid4
 from decimal import Decimal
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from django.utils import timezone
 
 class User (AbstractUser):
@@ -52,6 +54,11 @@ class Catalog(models.Model):
        return self.name or str(self.id)
     
 
+def current_year():
+    """The year it is now in Lagos (so the count goes up at midnight on 1 January there)."""
+    return datetime.now(ZoneInfo("Africa/Lagos")).year
+
+
 class MetaData(models.Model):
       metaIntro = models.TextField(max_length=2000)
       
@@ -60,13 +67,33 @@ class MetaData(models.Model):
       ordersCompleted= models.PositiveIntegerField(default=0)
       
       suppliers = models.PositiveIntegerField(default=0)
+      # "years of experience" as the owner last typed it, and the year they typed it:
+      # the number shown on the site goes up by one every 1 January by itself
       experience = models.SmallIntegerField(default=0)
+      experience_year = models.PositiveSmallIntegerField(default=current_year, editable=False)
     
       email = models.EmailField()
       
       phone = models.CharField(max_length=55 , blank=False)
       
       office = models.CharField(max_length=1000)
+
+      # the currency the catalog prices are shown in on the public site
+      CURRENCIES = [
+          ("USD", "US dollar ($)"),
+          ("NGN", "Nigerian naira (₦)"),
+          ("GBP", "British pound (£)"),
+          ("EUR", "Euro (€)"),
+          ("CNY", "Chinese yuan (¥)"),
+          ("GHS", "Ghanaian cedi (GH₵)"),
+          ("ZAR", "South African rand (R)"),
+          ("AED", "UAE dirham (AED)"),
+      ]
+      currency = models.CharField(max_length=3, choices=CURRENCIES, default="USD")
+
+      @property
+      def years_of_experience(self):
+          return max(0, self.experience + (current_year() - self.experience_year))
       
 class Service(models.Model):
     
@@ -275,3 +302,21 @@ class AuditLog(models.Model):
 
     def __str__(self):
         return f"{self.actor_email or 'someone'} {self.action} {self.target_type} {self.target_label}".strip()
+
+
+class SocialFeed(models.Model):
+    """The last good copy of an outside feed (the X/Twitter posts shown on the
+    website) and when it may next be refreshed. Kept in the database, not in
+    files, so a restart or a new deploy never makes the site hit the API again."""
+
+    key = models.CharField(max_length=30, unique=True)
+    payload = models.JSONField(default=dict, blank=True)
+    external_id = models.CharField(max_length=40, blank=True)  # the account's id, looked up once
+    fetched_at = models.DateTimeField(null=True, blank=True)
+    next_try_at = models.DateTimeField(default=timezone.now)
+    month = models.CharField(max_length=7, blank=True)  # "2026-10": which month the counter is for
+    attempts_this_month = models.PositiveIntegerField(default=0)
+    last_error = models.CharField(max_length=300, blank=True)
+
+    def __str__(self):
+        return f"{self.key} (fetched {self.fetched_at})"

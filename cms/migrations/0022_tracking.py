@@ -11,7 +11,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('cms', '0018_auditlog'),
+        ('cms', '0021_metadata_experience_year'),
     ]
 
     operations = [
