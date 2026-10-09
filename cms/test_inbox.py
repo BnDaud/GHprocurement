@@ -244,11 +244,10 @@ class InboxApi(AuthTestBase):
             self.assertEqual(self.c.patch(f"/api/inbox/{m.pk}/", body, format="json").status_code, 400, body)
         self.assertEqual(InboxMessage.objects.get(pk=m.pk).subject, "Second")
 
-    def test_messages_cannot_be_created_replaced_or_deleted(self):
+    def test_messages_cannot_be_created_or_replaced(self):
         m = InboxMessage.objects.get(message_id="m2")
         self.assertEqual(self.c.post("/api/inbox/", {"subject": "x"}, format="json").status_code, 405)
         self.assertEqual(self.c.put(f"/api/inbox/{m.pk}/", {"subject": "x"}, format="json").status_code, 405)
-        self.assertEqual(self.c.delete(f"/api/inbox/{m.pk}/").status_code, 405)
         self.assertEqual(InboxMessage.objects.count(), 3)
 
     def test_summary_counts_unread_excluding_spam(self):
@@ -276,3 +275,73 @@ class InboxApi(AuthTestBase):
 
     def test_unknown_message(self):
         self.assertEqual(self.c.get("/api/inbox/00000000-0000-0000-0000-000000000000/").status_code, 404)
+
+
+@override_settings(POSTMARK_INBOUND_SECRET=SECRET)
+class DeletingMail(AuthTestBase):
+    def setUp(self):
+        super().setUp()
+        for i, spam in enumerate((False, False, True, True, False)):
+            post(payload(MessageID=f"d{i}", Subject=f"Mail {i}", Headers=[{"Name": "X-Spam-Status", "Value": "Yes" if spam else "No"}]))
+        self.c = self.client_for(self.login().data["token"])
+        self.ids = {m.message_id: str(m.pk) for m in InboxMessage.objects.all()}
+
+    def test_delete_one(self):
+        r = self.c.delete(f"/api/inbox/{self.ids['d0']}/")
+        self.assertEqual(r.status_code, 204)
+        self.assertEqual(InboxMessage.objects.count(), 4)
+        self.assertFalse(InboxMessage.objects.filter(message_id="d0").exists())
+        self.assertEqual(self.c.get(f"/api/inbox/{self.ids['d0']}/").status_code, 404)
+
+    def test_delete_one_leaves_the_others_alone(self):
+        self.c.delete(f"/api/inbox/{self.ids['d1']}/")
+        self.assertEqual(set(InboxMessage.objects.values_list("message_id", flat=True)), {"d0", "d2", "d3", "d4"})
+
+    def test_deleting_something_that_is_gone_is_a_404(self):
+        self.c.delete(f"/api/inbox/{self.ids['d0']}/")
+        self.assertEqual(self.c.delete(f"/api/inbox/{self.ids['d0']}/").status_code, 404)
+        self.assertEqual(self.c.delete("/api/inbox/00000000-0000-0000-0000-000000000000/").status_code, 404)
+
+    def test_bulk_delete_by_ids(self):
+        r = self.c.post("/api/inbox/bulk-delete/", {"ids": [self.ids["d0"], self.ids["d4"]]}, format="json")
+        self.assertEqual((r.status_code, r.data), (200, {"deleted": 2}))
+        self.assertEqual(set(InboxMessage.objects.values_list("message_id", flat=True)), {"d1", "d2", "d3"})
+
+    def test_bulk_delete_ignores_ids_that_no_longer_exist(self):
+        r = self.c.post("/api/inbox/bulk-delete/", {"ids": [self.ids["d0"], "00000000-0000-0000-0000-000000000000"]}, format="json")
+        self.assertEqual(r.data, {"deleted": 1})
+
+    def test_delete_all_spam(self):
+        r = self.c.post("/api/inbox/bulk-delete/", {"spam": True}, format="json")
+        self.assertEqual(r.data, {"deleted": 2})
+        self.assertEqual(InboxMessage.objects.filter(is_spam=True).count(), 0)
+        self.assertEqual(InboxMessage.objects.count(), 3)  # real mail is never touched by "delete spam"
+
+    def test_bulk_delete_needs_a_clear_instruction(self):
+        for bad in ({}, {"ids": []}, {"ids": "x"}, {"ids": ["not-a-uuid"]}, {"spam": False}, {"ids": [self.ids["d0"]], "spam": True}, {"ids": [self.ids["d0"]] * 501}):
+            self.assertEqual(self.c.post("/api/inbox/bulk-delete/", bad, format="json").status_code, 400, str(bad)[:40])
+        self.assertEqual(InboxMessage.objects.count(), 5)  # nothing was deleted by any bad request
+
+    def test_counts_follow_a_delete(self):
+        self.assertEqual(self.c.get("/api/inbox/summary/").data, {"unread": 3, "total": 5})
+        self.c.delete(f"/api/inbox/{self.ids['d0']}/")
+        self.c.post("/api/inbox/bulk-delete/", {"spam": True}, format="json")
+        self.assertEqual(self.c.get("/api/inbox/summary/").data, {"unread": 2, "total": 2})
+
+    def test_outsiders_and_customers_cannot_delete(self):
+        for client, code in ((self.anon, 401), (self.client_for(make_token(self.customer)), 403)):
+            self.assertEqual(client.delete(f"/api/inbox/{self.ids['d0']}/").status_code, code)
+            self.assertEqual(client.post("/api/inbox/bulk-delete/", {"spam": True}, format="json").status_code, code)
+        self.assertEqual(InboxMessage.objects.count(), 5)
+
+    def test_a_regular_admin_can_delete_too(self):
+        regular = mk("regular", "regular@x.com", "Regul4r-pass!!", is_staff=True)
+        self.assertEqual(self.client_for(make_token(regular)).delete(f"/api/inbox/{self.ids['d0']}/").status_code, 204)
+
+    def test_deleting_only_touches_the_cms_copy(self):
+        # nothing here talks to Zoho or Postmark: no outgoing request is made
+        from unittest import mock
+        with mock.patch("requests.get") as g, mock.patch("requests.post") as p, mock.patch("requests.delete") as d:
+            self.c.delete(f"/api/inbox/{self.ids['d0']}/")
+            self.c.post("/api/inbox/bulk-delete/", {"spam": True}, format="json")
+        self.assertFalse(g.called or p.called or d.called)
