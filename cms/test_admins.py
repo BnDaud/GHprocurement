@@ -306,25 +306,25 @@ class NewAdminsCanUseTwoStep(AdminBase):
 
 
 class SessionLength(AuthTestBase):
-    """A sign-in (password, and the code if 2FA is on) lasts 12 hours."""
+    """A sign-in (password, and the code if 2FA is on) lasts 3 hours."""
 
-    def test_the_session_is_twelve_hours(self):
+    def test_the_session_is_three_hours(self):
         from .authentication import TOKEN_MAX_AGE
-        self.assertEqual(TOKEN_MAX_AGE, 12 * 3600)
-        self.assertEqual(self.login().data["expires_in"], 12 * 3600)
+        self.assertEqual(TOKEN_MAX_AGE, 3 * 3600)
+        self.assertEqual(self.login().data["expires_in"], 3 * 3600)
 
-    def test_still_valid_just_under_twelve_hours_and_dead_just_after(self):
+    def test_still_valid_just_under_three_hours_and_dead_just_after(self):
         import time
         t0 = time.time()
         client = self.client_for(self.login().data["token"])
-        with mock.patch("django.core.signing.time.time", return_value=t0 + 12 * 3600 - 120):
+        with mock.patch("django.core.signing.time.time", return_value=t0 + 3 * 3600 - 120):
             self.assertEqual(client.get("/api/gettotal").status_code, 200)
-        with mock.patch("django.core.signing.time.time", return_value=t0 + 12 * 3600 + 120):
+        with mock.patch("django.core.signing.time.time", return_value=t0 + 3 * 3600 + 120):
             r = client.get("/api/gettotal")
         self.assertEqual(r.status_code, 401)
         self.assertIn("expired", r.data["detail"].lower())
 
-    def test_a_session_with_two_step_on_also_lasts_twelve_hours(self):
+    def test_a_session_with_two_step_on_also_lasts_three_hours(self):
         # the session issued after the code step has the same lifetime
         from . import mfa as mfa_module
         import time
@@ -334,7 +334,7 @@ class SessionLength(AuthTestBase):
         now = time.time()
         step2 = self.anon.post("/api/auth/login/mfa/", {"mfa_token": step1.data["mfa_token"], "code": pyotp.TOTP(secret).at(now)}, format="json")
         self.assertEqual(step2.status_code, 200)
-        self.assertEqual(step2.data["expires_in"], 12 * 3600)
+        self.assertEqual(step2.data["expires_in"], 3 * 3600)
 
 
 class LastSignIn(AdminBase):

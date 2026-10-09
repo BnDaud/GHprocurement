@@ -13,7 +13,7 @@ from rest_framework.exceptions import AuthenticationFailed
 from .models import User
 
 TOKEN_SALT = "cms-auth-token"
-TOKEN_MAX_AGE = 60 * 60 * 12  # 12 hours
+TOKEN_MAX_AGE = 60 * 60 * 3  # a sign-in lasts 3 hours
 
 
 def _fingerprint(user):
