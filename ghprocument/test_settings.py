@@ -30,3 +30,5 @@ PUBLIC_SITE_URL = os.environ.get("PUBLIC_SITE_URL", "http://localhost:3000")
 if os.environ.get("TEST_FILE_EMAIL"):  # local checks: write each email to a file you can open
     EMAIL_BACKEND = "django.core.mail.backends.filebased.EmailBackend"
     EMAIL_FILE_PATH = os.environ["TEST_FILE_EMAIL"]
+    if os.environ.get("TEST_REAL_MAIL_TO"):  # ...but really deliver mail to these (own) addresses
+        EMAIL_BACKEND = "cms.devmail.AllowlistBackend"
