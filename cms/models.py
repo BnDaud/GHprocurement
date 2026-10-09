@@ -67,6 +67,19 @@ class MetaData(models.Model):
       phone = models.CharField(max_length=55 , blank=False)
       
       office = models.CharField(max_length=1000)
+
+      # the currency the catalog prices are shown in on the public site
+      CURRENCIES = [
+          ("USD", "US dollar ($)"),
+          ("NGN", "Nigerian naira (₦)"),
+          ("GBP", "British pound (£)"),
+          ("EUR", "Euro (€)"),
+          ("CNY", "Chinese yuan (¥)"),
+          ("GHS", "Ghanaian cedi (GH₵)"),
+          ("ZAR", "South African rand (R)"),
+          ("AED", "UAE dirham (AED)"),
+      ]
+      currency = models.CharField(max_length=3, choices=CURRENCIES, default="USD")
       
 class Service(models.Model):
     
