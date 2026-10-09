@@ -1,3 +1,4 @@
+import secrets
 import os
 import django
 import random
@@ -25,9 +26,10 @@ fake = Faker()
 print("Creating user...")
 
 try:
+    demo_password = secrets.token_urlsafe(16)  # random; printed once below
     user = User.objects.create_user(
         username="demo_user",
-        password="DemoPass123",
+        password=demo_password,
         phone=fake.phone_number()
     )
 
@@ -37,7 +39,7 @@ try:
     user.dp.save("profile.jpg", ContentFile(dp_resp.content))
     user.save()
 
-    print("User created.")
+    print(f"User created. demo_user password (shown once): {demo_password}")
     print("Profile picture URL:", user.dp.url)
 
 except Exception as e:

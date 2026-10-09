@@ -1,5 +1,6 @@
 """Administrators: only a super admin can add or remove them; the Users list
 shows ordinary accounts only; a super admin can never be deleted."""
+import secrets
 from unittest import mock
 
 import pyotp
@@ -8,9 +9,9 @@ from rest_framework.test import APIClient
 
 from .authentication import make_token
 from .models import MFADevice, User
-from .tests import ADMIN_EMAIL, ADMIN_PASSWORD, AuthTestBase, mk
+from .tests import ADMIN_EMAIL, ADMIN_PASSWORD, USER_PASSWORD, AuthTestBase, mk
 
-NEW_PASSWORD = "Fresh-adm1n-pass!"
+NEW_PASSWORD = "Pw-" + secrets.token_urlsafe(14)
 NOW = 1_800_000_000
 
 
@@ -52,18 +53,18 @@ class UsersPageShowsOnlyAccounts(AdminBase):
             self.assertTrue(User.objects.filter(pk=target.pk).exists())
 
     def test_ordinary_accounts_still_work_there(self):
-        r = self.super.post("/api/user/", {"username": "lead", "email": "lead@x.com", "password": "Some-pass-99", "phone": "1", "first_name": "L", "last_name": "D"}, format="json")
+        r = self.super.post("/api/user/", {"username": "lead", "email": "lead@x.com", "password": USER_PASSWORD, "phone": "1", "first_name": "L", "last_name": "D"}, format="json")
         self.assertEqual(r.status_code, 201)
         self.assertEqual(self.super.delete(f"/api/user/{r.data['id']}/").status_code, 204)
 
     def test_an_account_made_there_can_never_be_an_admin(self):
         # extra fields in the request are ignored: no way to slip in is_staff
-        r = self.super.post("/api/user/", {"username": "sneaky", "email": "s@x.com", "password": "Some-pass-99", "phone": "1",
+        r = self.super.post("/api/user/", {"username": "sneaky", "email": "s@x.com", "password": USER_PASSWORD, "phone": "1",
                                           "first_name": "S", "last_name": "S", "is_staff": True, "is_superuser": True}, format="json")
         self.assertEqual(r.status_code, 201)
         u = User.objects.get(username="sneaky")
         self.assertEqual((u.is_staff, u.is_superuser), (False, False))
-        self.assertEqual(self.login("s@x.com", "Some-pass-99").status_code, 401)
+        self.assertEqual(self.login("s@x.com", USER_PASSWORD).status_code, 401)
 
     def test_dashboard_user_total_counts_accounts_only(self):
         self.assertEqual(self.super.get("/api/gettotal").data["TotalUsers"], 1)

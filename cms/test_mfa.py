@@ -12,7 +12,7 @@ from django.utils import timezone
 from . import mfa
 from .authentication import make_token
 from .models import MFADevice, User
-from .tests import ADMIN_EMAIL, ADMIN_PASSWORD, AuthTestBase, mk
+from .tests import ADMIN_EMAIL, ADMIN_PASSWORD, OTHER_PASSWORD, AuthTestBase, mk
 
 NOW = 1_800_000_000  # a fixed moment; codes for it are fully predictable
 
@@ -341,9 +341,9 @@ class Misc(MfaBase):
 
     def test_changing_the_password_keeps_2fa_on(self):
         _, _, token = self.enable()
-        r = self.client_for(token).post("/api/auth/change-password/", {"current_password": ADMIN_PASSWORD, "new_password": "An0ther-good-pass"}, format="json")
+        r = self.client_for(token).post("/api/auth/change-password/", {"current_password": ADMIN_PASSWORD, "new_password": OTHER_PASSWORD}, format="json")
         self.assertEqual(r.status_code, 200)
-        self.assertTrue(self.login(password="An0ther-good-pass").data["mfa_required"])
+        self.assertTrue(self.login(password=OTHER_PASSWORD).data["mfa_required"])
 
     def test_another_admin_is_not_affected(self):
         other = mk("boss", "boss@x.com", "B0ss-passw0rd!", is_staff=True)
