@@ -24,3 +24,5 @@ PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]  # fast tes
 
 if os.environ.get("TEST_LOCMEM_EMAIL"):  # local checks that must not send real mail
     EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
+
+TWITTER_REFRESH_SYNC = True
