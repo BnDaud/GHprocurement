@@ -48,7 +48,7 @@ class Catalog(models.Model):
     
     
     def __str__(self):
-       return self.title or str(self.id)
+       return self.name or str(self.id)
     
 
 class MetaData(models.Model):
@@ -182,3 +182,39 @@ class InboxMessage(models.Model):
 
     def __str__(self):
         return f"{self.from_email}: {self.subject[:40]}"
+
+
+class AuditLog(models.Model):
+    """Who did what in the CMS. Append-only: nothing in the API can change or
+    delete a row. Never holds passwords, codes, message text or file contents;
+    only who, what kind of action, which item (its name) and when."""
+
+    class Action(models.TextChoices):
+        SIGN_IN = "sign_in", "Signed in"
+        SIGN_IN_FAILED = "sign_in_failed", "Failed sign-in"
+        PASSWORD_CHANGED = "password_changed", "Changed password"
+        TWO_STEP_ON = "two_step_on", "Turned two-step on"
+        TWO_STEP_OFF = "two_step_off", "Turned two-step off"
+        RECOVERY_CODES = "recovery_codes", "Made new recovery codes"
+        CREATED = "created", "Created"
+        UPDATED = "updated", "Edited"
+        DELETED = "deleted", "Deleted"
+        EMAIL_SENT = "email_sent", "Sent an email"
+        QUOTE_RECEIVED = "quote_received", "Quote request received"
+
+    id = models.UUIDField(default=uuid4, primary_key=True, editable=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    # SET_NULL + a copy of the email: the trail survives the account being deleted
+    actor = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    actor_email = models.CharField(max_length=254, blank=True)
+    action = models.CharField(max_length=20, choices=Action.choices)
+    target_type = models.CharField(max_length=40, blank=True)  # e.g. "catalog item", "admin"
+    target_label = models.CharField(max_length=200, blank=True)  # its name at the time
+    detail = models.CharField(max_length=500, blank=True)  # e.g. which fields changed
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["-created_at"]), models.Index(fields=["action"])]
+
+    def __str__(self):
+        return f"{self.actor_email or 'someone'} {self.action} {self.target_type} {self.target_label}".strip()

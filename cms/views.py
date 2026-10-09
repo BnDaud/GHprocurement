@@ -16,12 +16,15 @@ import os , threading
 from django.db.models import Q
 from django.core.exceptions import ValidationError as DjangoValidationError
 from .permissions import IsCMSAdminOrReadOnly, IsSuperAdmin, is_super_admin
+from .audit import AuditedMixin, label_of, log, A
+from .models import AuditLog
 
-class UserView(ModelViewSet):
+class UserView(AuditedMixin, ModelViewSet):
     """Ordinary accounts (customers and contacts). Administrators are not
     listed here and cannot be changed or deleted through this endpoint; they
     are managed under /api/admins/ by a super admin."""
 
+    audit_name = "customer account"
     serializer_class = UserSerial
     queryset = User.objects.filter(is_staff=False, is_superuser=False)
 
@@ -51,28 +54,33 @@ class UserView(ModelViewSet):
 
 
     
-class CatalogView(ModelViewSet):
+class CatalogView(AuditedMixin, ModelViewSet):
+    audit_name = "catalog item"
     permission_classes = [IsCMSAdminOrReadOnly]  # public can read, only admins can change
     queryset = Catalog.objects.all()
     serializer_class = CatalogSerial
     
-class MetaDataView(ModelViewSet):
+class MetaDataView(AuditedMixin, ModelViewSet):
+    audit_name = "site settings"
     permission_classes = [IsCMSAdminOrReadOnly]  # public can read, only admins can change
     queryset = MetaData.objects.all()
     serializer_class = MetaDataSerial
     
-class FAQView(ModelViewSet):
+class FAQView(AuditedMixin, ModelViewSet):
+    audit_name = "FAQ"
     permission_classes = [IsCMSAdminOrReadOnly]  # public can read, only admins can change
     queryset = FAQ.objects.all()
     serializer_class = FAQSerial
     
-class ServicesView(ModelViewSet):
+class ServicesView(AuditedMixin, ModelViewSet):
+    audit_name = "service"
     permission_classes = [IsCMSAdminOrReadOnly]  # public can read, only admins can change
     queryset = Service.objects.all()
     serializer_class = ServicesSerial
     
     
-class RFQView(ModelViewSet):
+class RFQView(AuditedMixin, ModelViewSet):
+    audit_name = "quote request"
     serializer_class = RFQSerial
     queryset = RFQ.objects.all()
 
@@ -91,6 +99,7 @@ class RFQView(ModelViewSet):
         if serial.is_valid() :
             #print(serial.validated_data)
             instance = serial.save()
+            log(None, A.QUOTE_RECEIVED, "quote request", f"{instance.name} ({instance.company})")
             data["image_url"] = instance.file.url
             # SendRFQ(data)
             threading.Thread(
@@ -173,6 +182,8 @@ class EmailView(APIView):
             valid_days=validated_data.get("valid_days") if validated_data["kind"] == "rfq_reply" else None,
             attachments_count=len(validated_data.get("attachments", [])),
         )
+        log(request, A.EMAIL_SENT, "email", validated_data["subject"],
+            f"to {validated_data['recipient']}" + (f", {record.reference}" if record.reference else ""))
         validated_data["record_id"] = str(record.pk)
         validated_data["reference"] = record.reference
         validated_data["sent_at"] = record.created_at
@@ -259,6 +270,7 @@ class AdminView(ViewSet):
             first_name=d["first_name"], last_name=d["last_name"],
             is_staff=True, is_superuser=False, dp="", phone="",
         )
+        log(request, A.CREATED, "admin", email)
         return Response(AdminSerial(user).data, status=status.HTTP_201_CREATED)
 
     def destroy(self, request, pk=None):
@@ -274,7 +286,9 @@ class AdminView(ViewSet):
             # e.g. the owner's own server account: not something to remove from the CMS
             return Response({"detail": "This account has full server access, so it cannot be deleted here."},
                             status=status.HTTP_403_FORBIDDEN)
+        removed = target.email or target.username
         target.delete()
+        log(request, A.DELETED, "admin", removed)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -310,7 +324,10 @@ class InboxView(ReadOnlyModelViewSet):
         return Response(InboxListSerial(message).data)
 
     def destroy(self, request, *args, **kwargs):
-        self.get_object().delete()
+        message = self.get_object()
+        label = f"{message.subject[:80] or '(no subject)'} from {message.from_email}"
+        message.delete()
+        log(request, A.DELETED, "inbox mail", label)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=False, methods=["post"], url_path="bulk-delete")
@@ -332,7 +349,9 @@ class InboxView(ReadOnlyModelViewSet):
             qs = InboxMessage.objects.filter(pk__in=clean)
         else:
             return Response({"detail": "Send either ids (1 to 500) or spam: true."}, status=status.HTTP_400_BAD_REQUEST)
-        return Response({"deleted": qs.delete()[0]})
+        deleted = qs.delete()[0]
+        log(request, A.DELETED, "inbox mail", f"{deleted} message{'s' if deleted != 1 else ''}", "all spam" if spam is True else "selected")
+        return Response({"deleted": deleted})
 
     @action(detail=False, methods=["post"], url_path="mark-all-read")
     def mark_all_read(self, request):
@@ -345,3 +364,36 @@ class InboxView(ReadOnlyModelViewSet):
             "unread": InboxMessage.objects.filter(is_read=False, is_spam=False).count(),
             "total": InboxMessage.objects.count(),
         })
+
+
+
+class AuditView(ReadOnlyModelViewSet):
+    """The activity trail. Only a super admin can read it; nobody can change it."""
+
+    permission_classes = [IsSuperAdmin]
+    queryset = AuditLog.objects.all()
+    pagination_class = None
+    PAGE = 100
+
+    def get_serializer_class(self):
+        from .serial import AuditSerial
+        return AuditSerial
+
+    def list(self, request, *args, **kwargs):
+        qs = self.get_queryset()
+        action = request.query_params.get("action")
+        if action:
+            qs = qs.filter(action__in=[a for a in action.split(",") if a in AuditLog.Action.values])
+        who = request.query_params.get("actor", "").strip()
+        if who:
+            qs = qs.filter(actor_email__icontains=who)
+        q = request.query_params.get("q", "").strip()
+        if q:
+            qs = qs.filter(Q(target_label__icontains=q) | Q(detail__icontains=q) | Q(target_type__icontains=q))
+        try:
+            offset = max(0, int(request.query_params.get("offset", 0)))
+        except ValueError:
+            offset = 0
+        total = qs.count()
+        rows = qs[offset: offset + self.PAGE]
+        return Response({"total": total, "offset": offset, "results": self.get_serializer(rows, many=True).data})

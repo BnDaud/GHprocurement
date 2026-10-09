@@ -14,6 +14,7 @@ from . import mfa
 from .authentication import TOKEN_MAX_AGE, make_token
 from .models import MFADevice, User
 from .permissions import IsCMSAdmin, is_super_admin
+from .audit import log, A
 
 MFA_STEP_SALT = "cms-mfa-step"
 MFA_STEP_MAX_AGE = 5 * 60  # five minutes to type the code after the password
@@ -69,6 +70,9 @@ class LoginView(APIView):
         user = next((u for u in candidates if u.check_password(password)), None)
         if user is None:
             make_password(password)  # keep timing similar whether or not the email exists
+            # name the account only if it is a real admin (the "email" box can hold a mistyped password)
+            known = User.objects.filter(Q(is_staff=True) | Q(is_superuser=True), email__iexact=email).first()
+            log(request, A.SIGN_IN_FAILED, "", "", "wrong password" if known else "unknown email", actor=known)
             return invalid
 
         if mfa.is_enabled(user):
@@ -77,6 +81,7 @@ class LoginView(APIView):
             return Response({"mfa_required": True, "mfa_token": step_token})
 
         update_last_login(None, user)  # so the super admin can see who has been active
+        log(request, A.SIGN_IN, actor=user)
         return Response(_session(user))
 
 
@@ -112,12 +117,14 @@ class LoginMfaView(APIView):
 
         used = mfa.check_code(device, request.data.get("code", ""))
         if used is None:
+            log(request, A.SIGN_IN_FAILED, detail="wrong two-step code", actor=user)
             if mfa.is_locked(device):
                 return _bad("Too many wrong codes. Try again in 15 minutes.", status.HTTP_429_TOO_MANY_REQUESTS)
             return _bad("That code is not right. Check the code in your app and try again.", status.HTTP_401_UNAUTHORIZED)
 
         device.refresh_from_db()
         update_last_login(None, user)
+        log(request, A.SIGN_IN, detail="two-step recovery code" if used == "recovery" else "two-step", actor=user)
         return Response(_session(user, used_recovery_code=used == "recovery", recovery_codes_left=len(device.recovery_hashes)))
 
 
@@ -153,6 +160,7 @@ class ChangePasswordView(APIView):
 
         user.set_password(new)
         user.save(update_fields=["password"])
+        log(request, A.PASSWORD_CHANGED)
         # every older token is now invalid; hand back a fresh one for this session
         return Response(
             {
@@ -210,6 +218,7 @@ class MfaConfirmView(APIView):
         device.recovery_hashes = hashes
         device.save(update_fields=["confirmed", "recovery_hashes"])
         user.refresh_from_db()
+        log(request, A.TWO_STEP_ON)
         return Response(_session(user, recovery_codes=codes))
 
 
@@ -241,6 +250,7 @@ class MfaDisableView(_NeedsPasswordAndCode):
         if error:
             return error
         device.delete()
+        log(request, A.TWO_STEP_OFF)
         request.user.refresh_from_db()
         return Response(_session(request.user, detail="Two-step verification is off."))
 
@@ -255,4 +265,5 @@ class MfaRecoveryCodesView(_NeedsPasswordAndCode):
         codes, hashes = mfa.make_recovery_codes()
         device.recovery_hashes = hashes
         device.save(update_fields=["recovery_hashes"])
+        log(request, A.RECOVERY_CODES)
         return Response({"recovery_codes": codes})

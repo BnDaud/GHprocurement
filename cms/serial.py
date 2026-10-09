@@ -292,3 +292,15 @@ class InboxSerial(InboxListSerial):
 
     def get_attachments(self, obj):
         return obj.attachments_info
+
+
+class AuditSerial(ModelSerializer):
+    action_label = SerializerMethodField()
+
+    class Meta:
+        from .models import AuditLog as _A
+        model = _A
+        fields = ["id", "created_at", "actor_email", "action", "action_label", "target_type", "target_label", "detail"]
+
+    def get_action_label(self, obj):
+        return obj.get_action_display()
