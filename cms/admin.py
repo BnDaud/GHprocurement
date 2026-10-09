@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.utils.html import format_html
-from .models import User,  Catalog
+from .models import User,  Catalog, SentEmail
 
 # -------------------------------
 # User Admin
@@ -61,3 +61,18 @@ class CatalogAdmin(admin.ModelAdmin):
             )
         return "—"
     featured_image_tag.short_description = "Featured Image"
+
+
+
+# -------------------------------
+# Sent emails (read-only log with reference numbers)
+# -------------------------------
+@admin.register(SentEmail)
+class SentEmailAdmin(admin.ModelAdmin):
+    list_display = ["reference", "kind", "recipient", "subject", "status", "attachments_count", "created_at"]
+    list_filter = ["kind", "status"]
+    search_fields = ["reference", "recipient", "subject"]
+    readonly_fields = [f.name for f in SentEmail._meta.fields]
+
+    def has_add_permission(self, request):
+        return False

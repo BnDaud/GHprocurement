@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="color-scheme" content="light" />
+    <meta name="supported-color-schemes" content="light" />
+    <title>{{ title }}</title>
+    <style>
+      body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+      table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+      img { border: 0; outline: none; text-decoration: none; -ms-interpolation-mode: bicubic; }
+      body { margin: 0 !important; padding: 0 !important; width: 100% !important; background-color: #efeff2; }
+      a { color: #420e51; }
+      @media screen and (max-width: 620px) {
+        .container { width: 100% !important; }
+        .pad { padding-left: 22px !important; padding-right: 22px !important; }
+        .stack { display: block !important; width: 100% !important; text-align: left !important; }
+        .stack-info { padding-top: 14px !important; }
+        .title { font-size: 22px !important; }
+      }
+    </style>
+  </head>
+
+  <body style="margin:0;padding:0;background-color:#efeff2;">
+    <div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">
+      {{ preheader }}&#8199;&#847; &#8199;&#847; &#8199;&#847; &#8199;&#847; &#8199;&#847;
+    </div>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#efeff2" style="background-color:#efeff2;">
+      <tr>
+        <td align="center" style="padding:28px 12px;">
+
+          <table role="presentation" class="container" width="600" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="width:600px;max-width:600px;background-color:#ffffff;">
+
+            <!-- letterhead -->
+            <tr>
+              <td class="pad" style="padding:36px 44px 18px 44px;border-bottom:2px solid #420e51;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                  <tr>
+                    <td class="stack" valign="top" align="left" style="width:45%;">
+                      {% if logo_cid %}
+                      <img src="cid:{{ logo_cid }}" width="150" alt="GH Procurement" style="display:block;width:150px;max-width:100%;height:auto;" />
+                      {% else %}
+                      <img src="{{ logo_url }}" width="150" alt="GH Procurement" style="display:block;width:150px;max-width:100%;height:auto;" />
+                      {% endif %}
+                    </td>
+                    <td class="stack stack-info" valign="top" align="right" style="font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:1.7;color:#4a4553;text-align:right;">
+                      {{ office }}<br />
+                      <a href="mailto:{{ contact_email }}" style="color:#4a4553;text-decoration:none;">{{ contact_email }}</a><br />
+                      {{ phone }} &middot; <a href="https://{{ website }}" style="color:#4a4553;text-decoration:none;">{{ website }}</a>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <!-- heading + reference box -->
+            <tr>
+              <td class="pad" style="padding:26px 44px 0 44px;font-family:Arial,Helvetica,sans-serif;">
+                <div style="margin:0 0 6px 0;font-size:11px;font-weight:bold;letter-spacing:0.14em;text-transform:uppercase;color:#6b6676;">Quotation</div>
+                <h1 class="title" style="margin:0 0 22px 0;font-family:Arial,Helvetica,sans-serif;font-size:24px;line-height:1.25;font-weight:bold;color:#420e51;">{{ title }}</h1>
+
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#faf6fc" style="background-color:#faf6fc;border:1px solid #eadff0;margin-bottom:26px;">
+                  <tr>
+                    <td style="padding:14px 18px;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.9;color:#2b2833;">
+                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                        <tr><td width="110" style="color:#6b6676;font-size:13px;line-height:1.9;font-family:Arial,Helvetica,sans-serif;">Date</td><td style="font-weight:bold;font-size:13px;line-height:1.9;font-family:Arial,Helvetica,sans-serif;">{{ date }}</td></tr>
+                        {% if reference %}<tr><td width="110" style="color:#6b6676;font-size:13px;line-height:1.9;font-family:Arial,Helvetica,sans-serif;">Reference</td><td style="font-weight:bold;font-size:13px;line-height:1.9;font-family:Arial,Helvetica,sans-serif;">{{ reference }}</td></tr>{% endif %}
+                        <tr><td width="110" style="color:#6b6676;font-size:13px;line-height:1.9;font-family:Arial,Helvetica,sans-serif;">Prepared for</td><td style="font-weight:bold;font-size:13px;line-height:1.9;font-family:Arial,Helvetica,sans-serif;">{{ prepared_for }}</td></tr>
+                        {% if valid_until %}<tr><td width="110" style="color:#6b6676;font-size:13px;line-height:1.9;font-family:Arial,Helvetica,sans-serif;">Valid until</td><td style="font-weight:bold;font-size:13px;line-height:1.9;font-family:Arial,Helvetica,sans-serif;">{{ valid_until }}</td></tr>{% endif %}
+                      </table>
+                    </td>
+                  </tr>
+                </table>
+
+                {% for paragraph in paragraphs %}
+                <p style="margin:0 0 14px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.7;color:#2b2833;">{% for line in paragraph %}{{ line }}{% if not forloop.last %}<br />{% endif %}{% endfor %}</p>
+                {% endfor %}
+              </td>
+            </tr>
+
+            {% if attachments %}
+            <!-- enclosed documents -->
+            <tr>
+              <td class="pad" style="padding:10px 44px 0 44px;">
+                <div style="margin:0 0 8px 0;font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:bold;letter-spacing:0.1em;text-transform:uppercase;color:#6b6676;">Enclosed documents</div>
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #e7e4ec;">
+                  <tr bgcolor="#f1e7f5" style="background-color:#f1e7f5;">
+                    <td width="40" style="padding:9px 14px;font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:bold;color:#420e51;">No.</td>
+                    <td style="padding:9px 14px;font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:bold;color:#420e51;">File</td>
+                    <td align="right" style="padding:9px 14px;font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:bold;color:#420e51;">Size</td>
+                  </tr>
+                  {% for file in attachments %}
+                  <tr>
+                    <td width="40" style="padding:10px 14px;border-top:1px solid #e7e4ec;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#6b6676;">{{ forloop.counter }}</td>
+                    <td style="padding:10px 14px;border-top:1px solid #e7e4ec;font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:bold;color:#2b2833;word-break:break-word;overflow-wrap:anywhere;">{{ file.name }}</td>
+                    <td align="right" style="padding:10px 14px;border-top:1px solid #e7e4ec;white-space:nowrap;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#6b6676;">{{ file.size }}</td>
+                  </tr>
+                  {% endfor %}
+                </table>
+              </td>
+            </tr>
+            {% endif %}
+
+            <!-- sign-off -->
+            <tr>
+              <td class="pad" style="padding:28px 44px 34px 44px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.7;color:#2b2833;">
+                Yours sincerely,<br /><br />
+                <strong style="color:#420e51;">Lawal Abdur-Razaq</strong><br />
+                <span style="color:#6b6676;">GH Procurement</span><br />
+                <span style="color:#6b6676;">{{ phone }} &middot; {{ contact_email }}</span>
+              </td>
+            </tr>
+
+            <!-- footer -->
+            <tr>
+              <td class="pad" bgcolor="#420e51" style="background-color:#420e51;padding:18px 44px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:1.6;color:#e9d7f0;">
+                This email and its attachments are confidential and intended only for the person it is addressed to. If you received it by mistake, please tell us and delete it.<br />
+                <span style="color:#febcbd;">&copy; {{ year }} GH Procurement. All rights reserved.</span>
+              </td>
+            </tr>
+          </table>
+
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

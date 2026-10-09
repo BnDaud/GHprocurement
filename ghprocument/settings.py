@@ -165,6 +165,20 @@ CLOUDINARY_STORAGE = {
 
 DEFAULT_FILE_STORAGE = "cloudinary_storage.storage.MediaCloudinaryStorage"
 
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {"console": {"class": "logging.StreamHandler"}},
+    "loggers": {"cms": {"handlers": ["console"], "level": "INFO"}},
+}
+
+REST_FRAMEWORK = {
+    # secure by default: a view is admin-only unless it says otherwise
+    "DEFAULT_AUTHENTICATION_CLASSES": ["cms.authentication.SignedTokenAuthentication"],
+    "DEFAULT_PERMISSION_CLASSES": ["cms.permissions.IsCMSAdmin"],
+    "DEFAULT_THROTTLE_RATES": {"login": "10/min", "password": "10/min"},
+}
+
 CORS_ALLOWED_ORIGINS = [
    "https://cms.ghprocurement.com",
    "https://www.ghprocurement.com",

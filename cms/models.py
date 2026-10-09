@@ -90,3 +90,45 @@ class RFQ(models.Model):
     company= models.CharField(max_length = 500 , blank = False)
     item = models.TextField(max_length=5000 , blank=False)
     file = CloudinaryField("rfq_Image" , folder = "RFQ_Image")
+
+class SentEmail(models.Model):
+    """One row per email sent from the CMS. RFQ replies also get a reference
+    number such as GHP-2026-0007, numbered per year."""
+
+    class Kind(models.TextChoices):
+        OUTREACH = "outreach", "Outreach / general"
+        RFQ_REPLY = "rfq_reply", "Reply to a quote request"
+
+    class Status(models.TextChoices):
+        QUEUED = "queued", "Queued"
+        SENT = "sent", "Sent"
+        FAILED = "failed", "Failed"
+
+    id = models.UUIDField(default=uuid4, primary_key=True, editable=False)
+    kind = models.CharField(max_length=20, choices=Kind.choices, default=Kind.OUTREACH)
+    reference = models.CharField(max_length=30, unique=True, null=True, blank=True)
+    reference_year = models.PositiveSmallIntegerField(null=True, blank=True)
+    reference_number = models.PositiveIntegerField(null=True, blank=True)
+    recipient = models.EmailField()
+    recipient_name = models.CharField(max_length=200, blank=True)
+    subject = models.CharField(max_length=200)
+    valid_days = models.PositiveSmallIntegerField(null=True, blank=True)
+    attachments_count = models.PositiveSmallIntegerField(default=0)
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.QUEUED)
+    error = models.TextField(blank=True)
+    provider_message_id = models.CharField(max_length=100, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    sent_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            # two emails can never share a reference number in the same year
+            models.UniqueConstraint(
+                fields=["reference_year", "reference_number"],
+                name="unique_reference_per_year",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.reference or self.get_kind_display()} to {self.recipient}"

@@ -1,4 +1,4 @@
-from rest_framework.serializers import ModelSerializer , SerializerMethodField , ImageField , Serializer , CharField , EmailField ,  ListField , FileField
+from rest_framework.serializers import ChoiceField, IntegerField, ModelSerializer , SerializerMethodField , ImageField , Serializer , CharField , EmailField ,  ListField , FileField
 from .models import User , Catalog,Service , FAQ ,MetaData , RFQ
 from django.contrib.auth.hashers import make_password
 from rest_framework.exceptions import ValidationError
@@ -122,12 +122,47 @@ class RFQSerial(ModelSerializer):
         
         return rfq
     
+ALLOWED_ATTACHMENTS = {
+    ".pdf": "application/pdf",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".webp": "image/webp",
+}
+ALLOWED_ATTACHMENT_LABEL = "PDF, DOCX, XLSX, PPTX, JPG, PNG, WEBP"
+MAX_ATTACHMENTS = 10
+MAX_FILE_SIZE = 10 * 1024 * 1024    # per file
+MAX_TOTAL_SIZE = 10 * 1024 * 1024   # per email (tuned after testing against Postmark)
+
+
+def _looks_like(ext, head):
+    if ext == ".pdf":
+        return head.startswith(b"%PDF")
+    if ext == ".png":
+        return head.startswith(b"\x89PNG")
+    if ext in (".jpg", ".jpeg"):
+        return head.startswith(b"\xff\xd8\xff")
+    if ext == ".webp":
+        return head[:4] == b"RIFF" and head[8:12] == b"WEBP"
+    if ext in (".docx", ".xlsx", ".pptx"):
+        return head.startswith(b"PK\x03\x04")  # these are zip containers
+    return False
+
+
 class EmailSerial(Serializer):
     body = CharField(max_length = 5000 , required = True)
     subject = CharField(max_length = 200 , required = True)
     title = CharField(max_length = 200 , required = True)
     recipient = EmailField(required = True)
-   
+    # which template to use: a reply to a quote request, or general outreach
+    kind = ChoiceField(choices=["outreach", "rfq_reply"], required=False, default="outreach")
+    # who the quotation is "prepared for" (falls back to the email address)
+    recipient_name = CharField(max_length=200, required=False, allow_blank=True, default="")
+    # optional: how many days the quote stays valid (RFQ replies only)
+    valid_days = IntegerField(min_value=1, max_value=365, required=False, allow_null=True, default=None)
 
     attachments = ListField(
         child=FileField(),
@@ -136,24 +171,36 @@ class EmailSerial(Serializer):
     )
 
     def validate_attachments(self, files):
-        MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+        if len(files) > MAX_ATTACHMENTS:
+            raise ValidationError(f"Attach at most {MAX_ATTACHMENTS} files.")
 
-        allowed_types = [
-            "application/pdf",
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-            "image/jpeg",
-            "image/png",
-            "image/webp",
-        ]
-
+        total = 0
         for file in files:
-            if file.size > MAX_FILE_SIZE:
-                raise ValidationError(f"{file.name} is too large (max 10MB).")
-            if file.content_type not in allowed_types:
+            ext = os.path.splitext(file.name)[1].lower()
+            mime = ALLOWED_ATTACHMENTS.get(ext)
+            if mime is None:
                 raise ValidationError(
-                    f"{file.name} has unsupported type {file.content_type}."
+                    f"{file.name}: {ext or 'this'} files are not allowed. "
+                    f"Allowed: {ALLOWED_ATTACHMENT_LABEL}."
                 )
+            if file.size > MAX_FILE_SIZE:
+                raise ValidationError(f"{file.name} is too large (max {MAX_FILE_SIZE // (1024 * 1024)} MB each).")
 
+            # the extension decides; the browser-reported type must not contradict it
+            if file.content_type not in (mime, "application/octet-stream", ""):
+                raise ValidationError(f"{file.name} does not match its {ext} file type.")
+            # and the first bytes must really look like that kind of file
+            head = file.read(12)
+            file.seek(0)
+            if not _looks_like(ext, head):
+                raise ValidationError(f"{file.name} is not a valid {ext} file.")
+
+            file.content_type = mime  # use our own canonical type from here on
+            total += file.size
+
+        if total > MAX_TOTAL_SIZE:
+            raise ValidationError(
+                f"Attachments total {total / (1024 * 1024):.1f} MB; "
+                f"the limit is {MAX_TOTAL_SIZE // (1024 * 1024)} MB per email."
+            )
         return files

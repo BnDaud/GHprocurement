@@ -1,179 +1,120 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Email</title>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="color-scheme" content="light" />
+    <meta name="supported-color-schemes" content="light" />
+    <title>{{ title }}</title>
     <style>
-      body {
-        margin: 0;
-        padding: 0;
-        font-family: Arial, Helvetica, sans-serif;
-        background-color: #ffffff;
-        color: #333333;
-      }
-      table {
-        border-collapse: collapse;
-      }
-      .container {
-        max-width: 600px;
-        width: 100%;
-        background-color: #ffffff;
-        border-radius: 6px;
-        overflow: hidden;
-      }
-      h2 {
-        margin: 0 0 20px 0;
-        font-size: 22px;
-        font-weight: bold;
-        text-align: center;
-        color: #000000;
-      }
-      .body-text {
-        font-size: 14px;
-        line-height: 1.6;
-        color: #333333;
-      }
-      .signature-table td {
-        vertical-align: middle;
-      }
-      .signature-table img {
-        width: 80px;
-        max-width: 100%;
-        display: block;
-      }
-      /* Header and Footer styles */
-      .header {
-        background-color: #febcbd; /* Banner color restored */
-        padding: 15px 20px;
-      }
-      .header-table td {
-        vertical-align: middle;
-      }
-      .header-logo img {
-        max-width: 120px;
-        height: auto;
-        display: block;
-      }
-      .header-info {
-        font-size: 11px;
-        color: #420e51;
-        font-weight: bold;
-        line-height: 1.4;
-      }
-      .footer {
-        text-align: center;
-        font-size: 12px;
-        color: #ffffff;
-        background-color: #420e51;
-        padding: 15px 20px;
-      }
-      @media screen and (max-width: 600px) {
-        .container {
-          width: 95% !important;
-        }
-        h2 {
-          font-size: 20px !important;
-        }
-        .body-text {
-          font-size: 13px !important;
-        }
-        .header-table td {
-          display: block;
-          text-align: center;
-          width: 100% !important;
-          margin-bottom: 10px;
-        }
-        .header-info {
-          text-align: center !important;
-        }
-        .header-logo img {
-          max-width: 100px;
-          margin: 0 auto 10px auto;
-        }
+      body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+      table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+      img { border: 0; outline: none; text-decoration: none; -ms-interpolation-mode: bicubic; }
+      body { margin: 0 !important; padding: 0 !important; width: 100% !important; background-color: #f1e7f5; }
+      a { color: #420e51; }
+      @media screen and (max-width: 620px) {
+        .container { width: 100% !important; }
+        .card-pad { padding-left: 22px !important; padding-right: 22px !important; }
+        .title { font-size: 23px !important; }
       }
     </style>
   </head>
 
-  <body>
-    <table width="100%" cellpadding="0" cellspacing="0" border="0">
+  <body style="margin:0;padding:0;background-color:#f1e7f5;">
+    <!-- preheader: the grey preview text shown next to the subject in the inbox -->
+    <div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">
+      {{ preheader }}&#8199;&#847; &#8199;&#847; &#8199;&#847; &#8199;&#847; &#8199;&#847;
+    </div>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f1e7f5" style="background-color:#f1e7f5;">
       <tr>
-        <td align="center" style="padding: 20px 0">
-          <!-- MAIN CONTAINER -->
-          <table class="container" cellpadding="0" cellspacing="0" border="0">
-            <!-- Header with Banner Color -->
-            <!-- Header -->
-            <tr>
-              <td class="header" bgcolor="#febcbd" style="padding: 15px 20px">
-                <table width="100%" cellpadding="0" cellspacing="0">
-                  <tr>
-                    <!-- Logo Column: less padding on the right -->
-                    <td
-                      valign="middle"
-                      width="150"
-                      style="padding-right: 10px; white-space: nowrap"
-                    >
-                      <img
-                        src="https://res.cloudinary.com/djasdhmmg/image/upload/v1767976601/Logo_iaaqdj.png"
-                        alt="Gh Procurement Logo"
-                        style="display: block; max-width: 100px; height: auto"
-                      />
-                    </td>
+        <td align="center" style="padding:32px 12px 28px 12px;">
 
-                    <!-- Info Column: more room for text -->
-                    <td
-                      valign="middle"
-                      width="150"
-                      style="
-                        font-size: 11px;
-                        color: #420e51;
-                        font-weight: bold;
-                        line-height: 1.4;
-                      "
-                    >
-                      <div style="font-size: 15px; color: #420e51">
-                        Gh Procurement
+          <table role="presentation" class="container" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;">
+
+            <!-- logo, centred above the card -->
+            <tr>
+              <td align="center" style="padding:0 0 22px 0;">
+                {% if logo_cid %}
+                <img src="cid:{{ logo_cid }}" width="150" alt="GH Procurement" style="display:inline-block;width:150px;max-width:100%;height:auto;" />
+                {% else %}
+                <img src="{{ logo_url }}" width="150" alt="GH Procurement" style="display:inline-block;width:150px;max-width:100%;height:auto;" />
+                {% endif %}
+              </td>
+            </tr>
+
+            <!-- card -->
+            <tr>
+              <td>
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="background-color:#ffffff;border-top:6px solid #febcbd;border-radius:16px;">
+                  <tr>
+                    <td class="card-pad" style="padding:36px 40px 34px 40px;font-family:Arial,Helvetica,sans-serif;">
+
+                      <h1 class="title" style="margin:0 0 6px 0;font-family:Arial,Helvetica,sans-serif;font-size:27px;line-height:1.25;font-weight:bold;text-align:center;color:#420e51;">{{ title }}</h1>
+                      <div style="margin:0 0 28px 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.4;text-align:center;color:#6b6676;">From the GH Procurement team</div>
+
+                      {% for paragraph in paragraphs %}
+                      <p style="margin:0 0 16px 0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.7;color:#333333;">{% for line in paragraph %}{{ line }}{% if not forloop.last %}<br />{% endif %}{% endfor %}</p>
+                      {% endfor %}
+
+                      {% if attachments %}
+                      <!-- attachments -->
+                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#faf6fc" style="background-color:#faf6fc;border-radius:12px;margin-top:10px;">
+                        <tr>
+                          <td style="padding:16px 18px 6px 18px;font-family:Arial,Helvetica,sans-serif;font-size:12px;font-weight:bold;letter-spacing:0.08em;text-transform:uppercase;color:#6b6676;">
+                            Attachments ({{ attachments|length }})
+                          </td>
+                        </tr>
+                        {% for file in attachments %}
+                        <tr>
+                          <td style="padding:0 18px {% if forloop.last %}18px{% else %}8px{% endif %} 18px;">
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="background-color:#ffffff;border-radius:999px;">
+                              <tr>
+                                <td style="padding:10px 16px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.4;font-weight:bold;color:#420e51;word-break:break-word;overflow-wrap:anywhere;">{{ file.name }}</td>
+                                <td align="right" style="padding:10px 16px 10px 0;white-space:nowrap;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.4;color:#6b6676;">{{ file.size }}</td>
+                              </tr>
+                            </table>
+                          </td>
+                        </tr>
+                        {% endfor %}
+                      </table>
+                      {% endif %}
+
+                      <!-- reply button -->
+                      <table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" style="margin:30px auto 26px auto;">
+                        <tr>
+                          <td align="center" bgcolor="#420e51" style="background-color:#420e51;border-radius:999px;">
+                            <a href="mailto:{{ contact_email }}?subject=Re%3A%20{{ subject|urlencode }}" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:bold;line-height:1;color:#febcbd;text-decoration:none;border-radius:999px;">Reply to this email</a>
+                          </td>
+                        </tr>
+                      </table>
+
+                      <!-- sign-off -->
+                      <div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;text-align:center;color:#333333;">
+                        Regards,<br />
+                        <strong style="color:#420e51;">Lawal Abdur-Razaq</strong><br />
+                        <span style="color:#6b6676;">GH Procurement</span>
                       </div>
-                      <div>Email: info@ghprocurement.com</div>
-                      <div>Phone: 08057962920</div>
-                      <div>Website: ghprocurement.com</div>
+
                     </td>
                   </tr>
                 </table>
               </td>
             </tr>
 
-            <!-- Body Content (No Inner Wrapper) -->
+            <!-- footer, below the card -->
             <tr>
-              <td style="padding: 20px">
-                <h2>{{ title }}</h2>
-                <div class="body-text">{{ body | linebreaks }}</div>
-
-                <!-- Signature -->
-                <table
-                  class="signature-table"
-                  width="100%"
-                  cellpadding="0"
-                  cellspacing="0"
-                  border="0"
-                  style="margin-top: 30px"
-                >
-                  <tr>
-                    <div>Regrads</div>
-                    <div>Lawal Abdur-Razaq</div>
-                  </tr>
-                </table>
-              </td>
-            </tr>
-
-            <!-- Footer -->
-            <tr>
-              <td class="footer">
-                &copy; {{ current_year }} Gh Procurement. All rights reserved.
+              <td align="center" style="padding:24px 12px 0 12px;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.8;text-align:center;color:#6b6676;">
+                {{ office }}<br />
+                <a href="mailto:{{ contact_email }}" style="color:#6b6676;text-decoration:none;">{{ contact_email }}</a>
+                &nbsp;&middot;&nbsp; {{ phone }} &nbsp;&middot;&nbsp;
+                <a href="https://{{ website }}" style="color:#6b6676;text-decoration:none;">{{ website }}</a><br />
+                &copy; {{ year }} GH Procurement. All rights reserved.
               </td>
             </tr>
           </table>
-          <!-- END MAIN CONTAINER -->
+
         </td>
       </tr>
     </table>
