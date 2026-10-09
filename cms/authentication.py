@@ -17,7 +17,11 @@ TOKEN_MAX_AGE = 60 * 60 * 12  # 12 hours
 
 
 def _fingerprint(user):
-    return user.password[-16:]
+    """Changes when the password changes, and when 2FA is turned on, off or
+    re-created, so older tokens (issued without the second step) stop working."""
+    device = getattr(user, "mfa", None)
+    mfa = f"m{device.pk}" if device and device.confirmed else ""
+    return user.password[-16:] + mfa
 
 
 def make_token(user):
@@ -48,7 +52,7 @@ class SignedTokenAuthentication(BaseAuthentication):
             raise AuthenticationFailed("Invalid token.")
 
         try:
-            user = User.objects.filter(pk=data.get("uid"), is_active=True).first()
+            user = User.objects.select_related("mfa").filter(pk=data.get("uid"), is_active=True).first()
         except (ValueError, DjangoValidationError):
             user = None
         if user is None or data.get("fp") != _fingerprint(user):

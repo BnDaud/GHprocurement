@@ -136,3 +136,21 @@ class SentEmail(models.Model):
 
     def __str__(self):
         return f"{self.reference or self.get_kind_display()} to {self.recipient}"
+
+
+class MFADevice(models.Model):
+    """An authenticator-app (TOTP) second factor for one user. Optional: a user
+    without a confirmed device signs in with the password alone."""
+
+    user = models.OneToOneField(User, related_name="mfa", on_delete=models.CASCADE)
+    secret = models.CharField(max_length=64)  # base32, shown once during setup
+    confirmed = models.BooleanField(default=False)
+    # last accepted 30-second step: the same code can never be used twice
+    last_used_step = models.BigIntegerField(null=True, blank=True)
+    recovery_hashes = models.JSONField(default=list, blank=True)  # hashes, never the codes
+    failed_attempts = models.PositiveSmallIntegerField(default=0)
+    locked_until = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"2FA for {self.user} ({'on' if self.confirmed else 'pending'})"
