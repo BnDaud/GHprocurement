@@ -1,3 +1,4 @@
+from rest_framework import serializers
 from rest_framework.serializers import ChoiceField, IntegerField, ModelSerializer , SerializerMethodField , ImageField , Serializer , CharField , EmailField ,  ListField , FileField
 from .models import User , Catalog,Service , FAQ ,MetaData , RFQ , SentEmail , InboxMessage
 from django.contrib.auth.hashers import make_password
@@ -87,6 +88,8 @@ class RFQSerial(ModelSerializer):
     user = UserSerial(read_only = True) 
     file_url = SerializerMethodField(read_only = True)
     file = ImageField(required=False, allow_null=True)
+    # the customer must tick the agreement before a NEW request is accepted
+    consent = serializers.BooleanField(write_only=True, required=False)
     
     class Meta:
         model = RFQ
@@ -97,10 +100,18 @@ class RFQSerial(ModelSerializer):
 
     def get_file_url(self , obj):
         return obj.file.url if obj.file else None
+
+    def validate(self, attrs):
+        if self.instance is None and attrs.get("consent") is not True:
+            raise serializers.ValidationError(
+                {"consent": "Please agree so we can reply and create your account."})
+        return attrs
     
     def create(self, validated_data):
         from .references import allocate_rfq_reference
         from . import tracking
+
+        validated_data.pop("consent", None)
 
         # the account is found (or made) from the EMAIL, never the company name;
         # a new one has no password until the customer picks one from the emailed link

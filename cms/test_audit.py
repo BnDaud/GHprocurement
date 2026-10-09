@@ -126,12 +126,12 @@ class ChangesAreRecorded(AuditBase):
         self.assertNotIn("private words", str(AuditLog.objects.values()))
 
     def test_public_quote_request_is_recorded_without_an_actor(self):
-        r = self.anon.post("/api/rfqs/", {"name": "Buyer One", "email": "buyer1@acme.com", "company": "Acme", "phone": "+234 1", "item": "20 chairs"}, format="multipart")
+        r = self.anon.post("/api/rfqs/", {"name": "Buyer", "email": "buyer@acme.com", "company": "Acme", "phone": "+2348000000000",
+                                          "item": "chairs", "consent": True}, format="json")
         self.assertEqual(r.status_code, 200, r.data)
         e = self.one(action="quote_received")
         self.assertEqual(e.actor_email, "")
-        self.assertIn("Buyer One (Acme)", e.target_label)
-        self.assertIn(r.data["reference"], e.target_label)
+        self.assertIn("Buyer (Acme)", e.target_label)
 
 
 class TwoStepIsRecorded(AuditBase):

@@ -15,7 +15,7 @@ from .test_admins import AdminBase
 from .tests import ADMIN_EMAIL
 
 STRONG = "Pw-" + secrets.token_urlsafe(14)
-FORM = {"name": "Ada Obi", "email": "ada@acme.com", "company": "Acme Supplies", "phone": "+2348000000000", "item": "20 office chairs"}
+FORM = {"name": "Ada Obi", "email": "ada@acme.com", "company": "Acme Supplies", "phone": "+2348000000000", "item": "20 office chairs", "consent": True}
 
 
 def customer_client(user):
@@ -77,6 +77,18 @@ class RequestCreatesAnAccount(TrackBase):
         self.assertEqual(r.status_code, 400)
         self.assertIn("email", r.data["fields"])
         self.assertEqual(RFQ.objects.count(), 0)
+
+    def test_the_agreement_must_be_ticked(self):
+        for body in ({k: v for k, v in FORM.items() if k != "consent"}, {**FORM, "consent": False}, {**FORM, "consent": "no"}):
+            r = self.anon.post("/api/rfqs/", body, format="json")
+            self.assertEqual(r.status_code, 400, body)
+            self.assertIn("consent", r.data["fields"])
+        self.assertEqual((RFQ.objects.count(), User.objects.filter(email="ada@acme.com").count()), (0, 0))  # nothing was created
+
+    def test_an_admin_editing_a_request_does_not_need_it(self):
+        self.submit()
+        rfq = RFQ.objects.get()
+        self.assertEqual(self.super.patch(f"/api/rfqs/{rfq.pk}/", {"item": "changed"}, format="json").status_code, 200)
 
     def test_it_is_recorded_without_naming_a_person(self):
         self.submit()
