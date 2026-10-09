@@ -19,22 +19,32 @@ class PortalNotLive(TrackBase):
 
     def old_form_post(self):
         body = {k: v for k, v in FORM.items() if k != "consent"}  # the old site never sends consent
-        with mock.patch("cms.views.threading.Thread") as thread:
-            r = self.anon.post("/api/rfqs/", body, format="json")
-        return r, thread
+        mail.outbox.clear()
+        return self.anon.post("/api/rfqs/", body, format="json")
 
     def test_the_old_form_still_works_without_the_agreement_box(self):
-        r, _ = self.old_form_post()
+        r = self.old_form_post()
         self.assertEqual(r.status_code, 200, r.data)
         self.assertEqual(RFQ.objects.count(), 1)
 
-    def test_it_sends_the_original_confirmation_not_the_new_emails(self):
-        from .task import sendRFQAPI
-        r, thread = self.old_form_post()
-        self.assertEqual(len(mail.outbox), 0)  # no email with links to pages that do not exist yet
-        kwargs = thread.call_args.kwargs
-        self.assertIs(kwargs["target"], sendRFQAPI)
-        self.assertEqual(kwargs["args"][0]["email"], "ada@acme.com")
+    def test_the_confirmation_goes_by_postmark_and_never_touches_zoho(self):
+        with mock.patch("cms.task.requests") as zoho:
+            self.old_form_post()
+            zoho.post.assert_not_called()
+            zoho.get.assert_not_called()
+        self.assertEqual(len(mail.outbox), 1)
+        m = mail.outbox[0]
+        self.assertEqual(m.to, ["ada@acme.com"])
+        self.assertRegex(m.subject, r"^We have your request RFQ-\d{4}-\d{4}$")
+
+    def test_it_has_no_links_to_customer_pages_that_do_not_exist_yet(self):
+        self.old_form_post()
+        html = mail.outbox[0].alternatives[0][0]
+        for gone in ("set-password", "/account", "Choose my password", "Track my request", "followed on your account"):
+            self.assertNotIn(gone, html, gone)
+        self.assertIn("We have your request, Ada.", html)
+        self.assertIn("Quotation within", html)
+        self.assertIn("We source, check and ship", html)
 
     def test_the_account_is_still_made_safely(self):
         self.old_form_post()

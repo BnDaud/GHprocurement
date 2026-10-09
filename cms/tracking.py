@@ -210,30 +210,44 @@ NEXT_STEPS = [
     ("You confirm", "We start sourcing for you."),
     ("You follow it home", "Each step shows on your account until delivery."),
 ]
+# before the customer pages are live there is no account to follow it on
+NEXT_STEPS_SIMPLE = [
+    ("We send your quotation", "A formal quotation by email."),
+    ("You confirm", "We start sourcing for you."),
+    ("We source, check and ship", "Then it is on its way to you."),
+]
 
 
 def email_request_received(rfq_id, new_account):
-    """Sent right after a request: its reference, and (new account) the link to choose a password."""
+    """Sent right after a request. Once the customer site is live it carries the reference and the link to
+    choose a password (or to track); until then it is a plain confirmation with no links to pages that
+    do not exist yet."""
+    from django.conf import settings
+
     from .references import format_date
 
     try:
         rfq = RFQ.objects.select_related("user").get(pk=rfq_id)
         user = rfq.user
+        portal = settings.CUSTOMER_PORTAL_LIVE
         details = [("Request", short_title(rfq)), ("Company", rfq.company),
                    ("Received", format_date(rfq.created_at)), ("Quotation within", "48 hours")]
-        common = dict(label="Request receipt", reference=rfq.reference, steps=NEXT_STEPS, details=details)
+        common = dict(label="Request receipt", reference=rfq.reference, details=details,
+                      steps=NEXT_STEPS if portal else NEXT_STEPS_SIMPLE)
         title = f"We have your request, {_first_name(rfq)}."
-        if new_account and user.email.lower() == rfq.email.lower():
+        thanks = "Thank you. We received your request and will send your quotation within 48 hours."
+        if not portal:
+            _send(rfq.email, f"We have your request {rfq.reference}", title,
+                  [thanks, "Please quote the reference above if you write to us about this request."], **common)
+        elif new_account and user.email.lower() == rfq.email.lower():
             link = f"{site_url()}/#/set-password?token={make_set_password_token(user)}"
-            paragraphs = ["Thank you. We received your request and will send your quotation within 48 hours.",
-                          "We made you an account so you can follow it, step by step. Choose your password (the link works for 24 hours):"]
-            _send(rfq.email, f"We have your request {rfq.reference}", title, paragraphs,
+            _send(rfq.email, f"We have your request {rfq.reference}", title,
+                  [thanks, "We made you an account so you can follow it, step by step. Choose your password (the link works for 24 hours):"],
                   "Choose my password", link,
                   "If you did not send this request, ignore this email. Nothing happens until the link is used.", **common)
         else:
-            paragraphs = ["Thank you. We received your request and will send your quotation within 48 hours.",
-                          "Sign in to follow it, step by step."]
-            _send(rfq.email, f"We have your request {rfq.reference}", title, paragraphs,
+            _send(rfq.email, f"We have your request {rfq.reference}", title,
+                  [thanks, "Sign in to follow it, step by step."],
                   "Track my request", f"{site_url()}/#/account/{rfq.pk}", "", **common)
     except Exception:  # noqa: BLE001
         logger.exception("could not send the request-received email for %s", rfq_id)

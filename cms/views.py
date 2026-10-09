@@ -12,7 +12,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework import status
 from .fetchtwitter import FetchTwiter
-from .task import  sendRFQAPI , sendEMailAPI_Method
+from .task import  sendEMailAPI_Method
 import os , threading
 from django.conf import settings
 from django.db.models import Q
@@ -104,13 +104,8 @@ class RFQView(AuditedMixin, ModelViewSet):
             instance = serial.save()
             tracking.rfq_limit_count(request)
             log(None, A.QUOTE_RECEIVED, "quote request", f"{instance.reference}: {instance.name} ({instance.company})")
-            if settings.CUSTOMER_PORTAL_LIVE:
-                tracking.in_background(tracking.email_request_received, str(instance.pk), bool(getattr(instance, "_new_account", False)))
-            else:
-                # the customer pages are not live yet: send the original confirmation (no links to them)
-                legacy = {k: request.data.get(k, "") for k in ("name", "email", "company", "phone", "item")}
-                legacy["image_url"] = instance.file.url if instance.file else ""
-                threading.Thread(target=sendRFQAPI, args=(legacy,), daemon=True).start()
+            # one confirmation email, sent through Postmark (never Zoho)
+            tracking.in_background(tracking.email_request_received, str(instance.pk), bool(getattr(instance, "_new_account", False)))
             return Response({"reference": instance.reference, "email": instance.email, "id": str(instance.pk),
                              "new_account": bool(getattr(instance, "_new_account", False))}, status=status.HTTP_200_OK)
         
