@@ -4,6 +4,7 @@ from cloudinary.models import CloudinaryField
 from django.contrib.auth.models import AbstractUser
 from uuid import uuid4
 from decimal import Decimal
+from django.utils import timezone
 
 class User (AbstractUser):
     id = models.UUIDField(default=uuid4 , primary_key=True , editable=False)
@@ -218,3 +219,21 @@ class AuditLog(models.Model):
 
     def __str__(self):
         return f"{self.actor_email or 'someone'} {self.action} {self.target_type} {self.target_label}".strip()
+
+
+class SocialFeed(models.Model):
+    """The last good copy of an outside feed (the X/Twitter posts shown on the
+    website) and when it may next be refreshed. Kept in the database, not in
+    files, so a restart or a new deploy never makes the site hit the API again."""
+
+    key = models.CharField(max_length=30, unique=True)
+    payload = models.JSONField(default=dict, blank=True)
+    external_id = models.CharField(max_length=40, blank=True)  # the account's id, looked up once
+    fetched_at = models.DateTimeField(null=True, blank=True)
+    next_try_at = models.DateTimeField(default=timezone.now)
+    month = models.CharField(max_length=7, blank=True)  # "2026-10": which month the counter is for
+    attempts_this_month = models.PositiveIntegerField(default=0)
+    last_error = models.CharField(max_length=300, blank=True)
+
+    def __str__(self):
+        return f"{self.key} (fetched {self.fetched_at})"
