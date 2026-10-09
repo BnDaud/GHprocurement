@@ -143,7 +143,7 @@ def AllData(req):  # public: feeds the customer website
     
     catalog = CatalogSerial(Catalog.objects.all(), many=True).data
     service = ServicesSerial(Service.objects.all() , many=True).data
-    metadata = MetaData.objects.values()
+    metadata = MetaDataSerial(MetaData.objects.all(), many=True).data
     faq = FAQSerial(FAQ.objects.all() ,many=True).data
     tweets = tweet.getTweets()    
     
