@@ -35,7 +35,7 @@ class PortalNotLive(TrackBase):
         self.assertEqual(len(mail.outbox), 1)
         m = mail.outbox[0]
         self.assertEqual(m.to, ["ada@acme.com"])
-        self.assertRegex(m.subject, r"^We have your request RFQ-\d{4}-\d{4}$")
+        self.assertRegex(m.subject, r"^We have your request RFQ-\d{4}-[A-Z2-9]{6}$")
 
     def test_it_has_no_links_to_customer_pages_that_do_not_exist_yet(self):
         self.old_form_post()

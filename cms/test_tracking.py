@@ -39,7 +39,7 @@ class RequestCreatesAnAccount(TrackBase):
     def test_new_customer_gets_an_account_a_reference_and_a_password_link(self):
         r = self.submit()
         self.assertEqual(r.status_code, 200, r.data)
-        self.assertRegex(r.data["reference"], r"^RFQ-\d{4}-0001$")
+        self.assertRegex(r.data["reference"], r"^RFQ-\d{4}-[A-HJKMNP-TV-Z2-9]{6}$")
         self.assertTrue(r.data["new_account"])
         user = User.objects.get(email="ada@acme.com")
         self.assertFalse(user.has_usable_password())  # no guessable password (it used to be the company name)
@@ -57,7 +57,7 @@ class RequestCreatesAnAccount(TrackBase):
         r = self.submit(item="500 helmets", company="Other Name Ltd")
         self.assertFalse(r.data["new_account"])
         self.assertEqual(User.objects.filter(email="ada@acme.com").count(), 1)
-        self.assertRegex(r.data["reference"], r"-0002$")
+        self.assertNotEqual(r.data["reference"], RFQ.objects.order_by("created_at").first().reference)
         self.assertIsNone(self.link_from_outbox())
 
     def test_same_company_name_does_not_merge_two_people(self):
@@ -406,3 +406,45 @@ class TheFormHasLimits(TrackBase):
             self.post_as("victim@x.com", ip=f"10.0.4.{i}")
         rfq = RFQ.objects.filter(email="victim@x.com").first()
         self.assertEqual(self.super.patch(f"/api/rfqs/{rfq.pk}/", {"item": "edited"}, format="json").status_code, 200)
+
+
+class RandomReferences(TrackBase):
+    def test_references_are_random_not_counting_up(self):
+        refs = []
+        for i in range(12):
+            refs.append(APIClient(HTTP_X_FORWARDED_FOR=f"10.9.0.{i}").post("/api/rfqs/", {**FORM, "email": f"p{i}@x.com"}, format="json").data["reference"])
+        self.assertEqual(len(set(refs)), 12)
+        codes = [r.split("-")[2] for r in refs]
+        self.assertFalse(any(c.isdigit() for c in codes))  # none of them is a plain counting number
+        self.assertNotEqual(codes, sorted(codes))  # and they do not come out in order
+
+    def test_format_and_no_look_alike_characters(self):
+        import re
+        ref = self.anon.post("/api/rfqs/", FORM, format="json").data["reference"]
+        self.assertRegex(ref, r"^RFQ-\d{4}-[A-Z2-9]{6}$")
+        for bad in "01OIL":
+            self.assertNotIn(bad, ref.split("-")[2])
+
+    def test_a_duplicate_is_never_issued(self):
+        from . import references
+        with mock.patch.object(references, "REFERENCE_ALPHABET", "AB"), mock.patch.object(references, "REFERENCE_LENGTH", 3):
+            made = set()
+            for i in range(8):  # only 8 codes exist: it must find each free one, then give up cleanly
+                made.add(references.allocate_rfq_reference(user=User.objects.create(username=f"u{i}", dp=""), email=f"e{i}@x.com", name="n",
+                                                            phone="1", company="c", item="i").reference)
+            self.assertEqual(len(made), 8)
+            with self.assertRaises(RuntimeError):
+                references.allocate_rfq_reference(user=User.objects.create(username="last", dp=""), email="l@x.com", name="n", phone="1", company="c", item="i")
+
+    def test_tracking_accepts_any_letter_case(self):
+        self.submit()
+        rfq = RFQ.objects.get()
+        r = self.anon.post("/api/customer/track/", {"reference": rfq.reference.lower(), "email": "ada@acme.com"}, format="json")
+        self.assertEqual(r.status_code, 200)
+
+    def test_old_counting_references_still_work(self):
+        self.submit()
+        rfq = RFQ.objects.get()
+        RFQ.objects.filter(pk=rfq.pk).update(reference="RFQ-2026-0001")
+        r = self.anon.post("/api/customer/track/", {"reference": "rfq-2026-0001", "email": "ada@acme.com"}, format="json")
+        self.assertEqual(r.status_code, 200)

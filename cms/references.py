@@ -47,19 +47,25 @@ def create_sent_email(kind, **fields):
     raise RuntimeError("Could not allocate a reference number")
 
 
+REFERENCE_ALPHABET = "ABCDEFGHJKMNPQRSTVWXYZ23456789"  # no 0/O, 1/I/L: nothing to mix up when read out or typed
+REFERENCE_LENGTH = 6
+
+
 def allocate_rfq_reference(**fields):
-    """Create a quote request with the next reference for the year
-    (RFQ-2026-0001, 0002, ...). Same retry idea as create_sent_email."""
-    for _ in range(10):
+    """Create a quote request with a random reference such as RFQ-2026-K7M2Q9.
+
+    Random, not counting up: nobody can guess another customer's reference, and
+    the references do not reveal how many requests there have been. (Earlier
+    requests keep their old counting numbers.) The database refuses a
+    duplicate, and we simply pick another."""
+    import secrets
+
+    for _ in range(30):
         year = lagos_now().year
-        last = RFQ.objects.filter(reference_year=year).aggregate(m=Max("reference_number"))["m"] or 0
-        number = last + 1
+        code = "".join(secrets.choice(REFERENCE_ALPHABET) for _ in range(REFERENCE_LENGTH))
         try:
             with transaction.atomic():
-                return RFQ.objects.create(
-                    reference_year=year, reference_number=number,
-                    reference=f"RFQ-{year}-{number:04d}", **fields,
-                )
+                return RFQ.objects.create(reference_year=year, reference=f"RFQ-{year}-{code}", **fields)
         except IntegrityError:
             continue
-    raise RuntimeError("Could not allocate a reference number")
+    raise RuntimeError("Could not allocate a reference")
