@@ -181,6 +181,10 @@ CMS_SUPER_ADMIN_EMAILS = [
     if e.strip()
 ]
 
+# Postmark inbound webhook: mail forwarded from the company mailbox arrives at
+# /api/inbound/<this secret>/. Leave unset to switch the inbox feed off.
+POSTMARK_INBOUND_SECRET = os.getenv("POSTMARK_INBOUND_SECRET", "")
+
 REST_FRAMEWORK = {
     # secure by default: a view is admin-only unless it says otherwise
     "DEFAULT_AUTHENTICATION_CLASSES": ["cms.authentication.SignedTokenAuthentication"],

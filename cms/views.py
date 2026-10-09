@@ -1,10 +1,11 @@
 from django.shortcuts import render
-from .models import User ,Catalog, FAQ , MetaData , Service , RFQ , SentEmail
+from .models import User ,Catalog, FAQ , MetaData , Service , RFQ , SentEmail , InboxMessage
 from .references import create_sent_email
-from .serial import AdminCreateSerial , AdminSerial , SentEmailListSerial , SentEmailSerial , UserSerial , CatalogSerial , MetaDataSerial , FAQSerial , ServicesSerial , RFQSerial , EmailSerial
+from .serial import InboxListSerial , InboxSerial , AdminCreateSerial , AdminSerial , SentEmailListSerial , SentEmailSerial , UserSerial , CatalogSerial , MetaDataSerial , FAQSerial , ServicesSerial , RFQSerial , EmailSerial
 # Create your views here.
 from rest_framework.views import APIView
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet, ViewSet
+from rest_framework.decorators import action
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -275,3 +276,46 @@ class AdminView(ViewSet):
                             status=status.HTTP_403_FORBIDDEN)
         target.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class InboxView(ReadOnlyModelViewSet):
+    """Mail received at the company address (admin only). The only thing an
+    admin can change is read/unread: messages cannot be created, edited or
+    deleted here."""
+
+    queryset = InboxMessage.objects.all()
+    MAX_LIST = 500
+
+    def get_serializer_class(self):
+        return InboxSerial if self.action == "retrieve" else InboxListSerial
+
+    def list(self, request, *args, **kwargs):
+        qs = self.get_queryset()
+        if request.query_params.get("unread") in ("1", "true"):
+            qs = qs.filter(is_read=False)
+        return Response(self.get_serializer(qs[: self.MAX_LIST], many=True).data)
+
+    def partial_update(self, request, *args, **kwargs):
+        """PATCH {"is_read": true|false}: nothing else can be changed."""
+        message = self.get_object()
+        extra = set(request.data.keys()) - {"is_read"}
+        if extra or "is_read" not in request.data:
+            return Response({"detail": "Only is_read can be changed."}, status=status.HTTP_400_BAD_REQUEST)
+        value = request.data["is_read"]
+        if isinstance(value, str):
+            value = value.lower() in ("1", "true", "yes")
+        message.is_read = bool(value)
+        message.save(update_fields=["is_read"])
+        return Response(InboxListSerial(message).data)
+
+    @action(detail=False, methods=["post"], url_path="mark-all-read")
+    def mark_all_read(self, request):
+        n = InboxMessage.objects.filter(is_read=False).update(is_read=True)
+        return Response({"marked": n})
+
+    @action(detail=False, methods=["get"])
+    def summary(self, request):
+        return Response({
+            "unread": InboxMessage.objects.filter(is_read=False, is_spam=False).count(),
+            "total": InboxMessage.objects.count(),
+        })

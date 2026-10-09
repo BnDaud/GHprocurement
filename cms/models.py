@@ -155,3 +155,30 @@ class MFADevice(models.Model):
 
     def __str__(self):
         return f"2FA for {self.user} ({'on' if self.confirmed else 'pending'})"
+
+
+class InboxMessage(models.Model):
+    """Mail that arrived at the company address (forwarded to Postmark and
+    delivered here by its inbound webhook). Text and attachment names only:
+    attachment files are never stored."""
+
+    id = models.UUIDField(default=uuid4, primary_key=True, editable=False)
+    message_id = models.CharField(max_length=255, unique=True)  # makes webhook retries harmless
+    from_email = models.CharField(max_length=254, blank=True)
+    from_name = models.CharField(max_length=200, blank=True)
+    to = models.JSONField(default=list, blank=True)
+    subject = models.CharField(max_length=500, blank=True)
+    text_body = models.TextField(blank=True)
+    attachments_info = models.JSONField(default=list, blank=True)  # [{"name","size","type"}]
+    spam_score = models.FloatField(null=True, blank=True)
+    is_spam = models.BooleanField(default=False)
+    is_read = models.BooleanField(default=False)
+    received_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-received_at"]
+        indexes = [models.Index(fields=["-received_at"]), models.Index(fields=["is_read"])]
+
+    def __str__(self):
+        return f"{self.from_email}: {self.subject[:40]}"

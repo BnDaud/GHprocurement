@@ -1,5 +1,5 @@
 from rest_framework.serializers import ChoiceField, IntegerField, ModelSerializer , SerializerMethodField , ImageField , Serializer , CharField , EmailField ,  ListField , FileField
-from .models import User , Catalog,Service , FAQ ,MetaData , RFQ , SentEmail
+from .models import User , Catalog,Service , FAQ ,MetaData , RFQ , SentEmail , InboxMessage
 from django.contrib.auth.hashers import make_password
 from rest_framework.exceptions import ValidationError
 import os
@@ -262,3 +262,33 @@ class AdminCreateSerial(Serializer):
     password = CharField(required=True, write_only=True, trim_whitespace=False, max_length=128)
     first_name = CharField(required=False, allow_blank=True, max_length=150, default="")
     last_name = CharField(required=False, allow_blank=True, max_length=150, default="")
+
+
+class InboxListSerial(ModelSerializer):
+    """One row of the inbox (no full body, to keep the list light)."""
+
+    snippet = SerializerMethodField()
+    attachments_count = SerializerMethodField()
+
+    class Meta:
+        model = InboxMessage
+        fields = ["id", "from_email", "from_name", "subject", "snippet", "received_at",
+                  "is_read", "is_spam", "attachments_count"]
+
+    def get_snippet(self, obj):
+        return " ".join(obj.text_body.split())[:160]
+
+    def get_attachments_count(self, obj):
+        return len(obj.attachments_info or [])
+
+
+class InboxSerial(InboxListSerial):
+    """A whole message, for reading."""
+
+    attachments = SerializerMethodField()
+
+    class Meta(InboxListSerial.Meta):
+        fields = InboxListSerial.Meta.fields + ["to", "text_body", "attachments", "spam_score"]
+
+    def get_attachments(self, obj):
+        return obj.attachments_info
