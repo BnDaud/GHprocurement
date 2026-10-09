@@ -1,6 +1,6 @@
 from rest_framework.routers import DefaultRouter
 from django.http import HttpResponse
-from .views import InboxView , AdminView , SentEmailView , UserView ,  CatalogView , getTotalView , AllData , ServicesView, FAQView ,  EmailView,MetaDataView , RFQView , AuditView
+from .views import InboxView , AdminView , SentEmailView , UserView ,  CatalogView , getTotalView , AllData , ServicesView, FAQView ,  EmailView,MetaDataView , RFQView , AuditView , health
 from .auth_views import (LoginView, LoginMfaView, MeView, ChangePasswordView, MfaSetupView,
                          MfaConfirmView, MfaDisableView, MfaRecoveryCodesView)
 from .inbound import postmark_inbound
@@ -48,7 +48,8 @@ def zoho_callback(request):
         return JsonResponse({"error": "Failed to get token", "details": response.text}, status=400)
 
     return JsonResponse(response.json())
-urlpatterns = [path("gettotal" , getTotalView , name = "getTotal"),
+urlpatterns = [path("health/", health, name="health"),
+path("gettotal" , getTotalView , name = "getTotal"),
 path("alldata/" , AllData , name = "alldata" ), 
 path("emails/" ,EmailView.as_view() ),
   path("inbound/<str:secret>/", postmark_inbound),
