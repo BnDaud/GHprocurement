@@ -346,3 +346,63 @@ class TheEmails(TrackBase):
         h = self.html()
         self.assertIn("Your account", h)
         self.assertIn("Choose my password", h)
+
+
+class TheFormHasLimits(TrackBase):
+    """Nobody can use the public form to flood an inbox (or the site)."""
+
+    def post_as(self, email, ip="10.0.0.1", **extra):
+        c = APIClient(HTTP_X_FORWARDED_FOR=ip)
+        return c.post("/api/rfqs/", {**FORM, "email": email, **extra}, format="json")
+
+    def test_the_same_email_can_get_only_three_in_an_hour(self):
+        codes = [self.post_as("victim@x.com", ip=f"10.0.0.{i}").status_code for i in range(1, 6)]  # different visitors each time
+        self.assertEqual(codes, [200, 200, 200, 429, 429])
+        self.assertEqual(RFQ.objects.filter(email="victim@x.com").count(), 3)
+
+    def test_a_refused_request_sends_no_email_and_creates_nothing(self):
+        for i in range(3):
+            self.post_as("victim@x.com", ip=f"10.0.1.{i}")
+        mail.outbox.clear()
+        r = self.post_as("victim@x.com", ip="10.0.1.9")
+        self.assertEqual(r.status_code, 429)
+        self.assertIn("detail", r.data)
+        self.assertEqual((len(mail.outbox), RFQ.objects.filter(email="victim@x.com").count()), (0, 3))
+
+    def test_the_limit_is_per_email_case_insensitive(self):
+        for i in range(3):
+            self.post_as("Victim@X.com", ip=f"10.0.2.{i}")
+        self.assertEqual(self.post_as("victim@x.COM", ip="10.0.2.9").status_code, 429)
+
+    def test_it_lifts_after_an_hour(self):
+        for i in range(3):
+            self.post_as("victim@x.com", ip=f"10.0.3.{i}")
+        RFQ.objects.filter(email="victim@x.com").update(created_at=timezone.now() - timedelta(minutes=61))
+        self.assertEqual(self.post_as("victim@x.com", ip="10.0.3.9").status_code, 200)
+
+    def test_one_visitor_can_send_five_an_hour_to_different_people(self):
+        codes = [self.post_as(f"person{i}@x.com", ip="9.9.9.9").status_code for i in range(7)]
+        self.assertEqual(codes, [200] * 5 + [429] * 2)
+        self.assertEqual(self.post_as("other@x.com", ip="8.8.8.8").status_code, 200)  # someone else is unaffected
+
+    def test_the_visitor_is_the_first_forwarded_address(self):
+        for i in range(5):
+            self.post_as(f"p{i}@x.com", ip="7.7.7.7, 10.1.1.1")
+        self.assertEqual(self.post_as("q@x.com", ip="7.7.7.7, 10.2.2.2").status_code, 429)
+
+    def test_a_site_wide_ceiling_protects_the_sender_reputation(self):
+        with mock.patch("cms.tracking.RFQ_SITE_WIDE", 2):
+            self.post_as("a1@x.com", ip="1.1.1.1"); self.post_as("a2@x.com", ip="1.1.1.2")
+            r = self.post_as("a3@x.com", ip="1.1.1.3")
+        self.assertEqual(r.status_code, 429)
+
+    def test_typos_do_not_use_up_the_allowance(self):
+        for _ in range(8):
+            self.assertEqual(self.anon.post("/api/rfqs/", {"name": "x"}, format="json").status_code, 400)
+        self.assertEqual(self.post_as("fine@x.com", ip="127.0.0.1").status_code, 200)
+
+    def test_the_cms_is_not_affected(self):
+        for i in range(3):
+            self.post_as("victim@x.com", ip=f"10.0.4.{i}")
+        rfq = RFQ.objects.filter(email="victim@x.com").first()
+        self.assertEqual(self.super.patch(f"/api/rfqs/{rfq.pk}/", {"item": "edited"}, format="json").status_code, 200)

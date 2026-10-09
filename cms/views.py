@@ -97,7 +97,11 @@ class RFQView(AuditedMixin, ModelViewSet):
         serial = self.get_serializer(data = request.data)
         
         if serial.is_valid() :
+            waiting = tracking.rfq_limit_reason(request, serial.validated_data["email"])
+            if waiting:
+                return Response({"detail": waiting}, status=status.HTTP_429_TOO_MANY_REQUESTS)
             instance = serial.save()
+            tracking.rfq_limit_count(request)
             log(None, A.QUOTE_RECEIVED, "quote request", f"{instance.reference}: {instance.name} ({instance.company})")
             tracking.in_background(tracking.email_request_received, str(instance.pk), bool(getattr(instance, "_new_account", False)))
             return Response({"reference": instance.reference, "email": instance.email, "id": str(instance.pk),

@@ -284,3 +284,49 @@ def in_background(fn, *args):
             connection.close()  # the thread owns its own database connection
 
     threading.Thread(target=run, daemon=True).start()
+
+
+# ---------------------------------------------------------------- limits on the public request form
+RFQ_WINDOW_SECONDS = 3600
+RFQ_PER_EMAIL = 3  # the same address cannot be mailed more than this per hour
+RFQ_PER_VISITOR = 5  # one visitor (IP address) cannot send more than this per hour
+RFQ_SITE_WIDE = 100  # a ceiling for the whole site, to protect the email sending reputation
+
+
+def client_ip(request):
+    """The visitor's address: the first one in X-Forwarded-For when behind a proxy."""
+    forwarded = request.META.get("HTTP_X_FORWARDED_FOR", "")
+    return (forwarded.split(",")[0].strip() if forwarded else request.META.get("REMOTE_ADDR", "")) or "unknown"
+
+
+def rfq_limit_reason(request, email):
+    """Returns a message when this request must wait, else None. Counts only
+    requests that were accepted, so a typo never uses up someone's allowance.
+    Email and site-wide limits are counted in the database (they hold across
+    servers and restarts); the visitor limit is a lighter, in-memory count."""
+    import os
+    from django.core.cache import cache
+    from datetime import timedelta
+
+    if os.environ.get("TEST_NO_RFQ_LIMITS"):  # local browser testing only
+        return None
+    since = timezone.now() - timedelta(seconds=RFQ_WINDOW_SECONDS)
+    if RFQ.objects.filter(email__iexact=email, created_at__gte=since).count() >= RFQ_PER_EMAIL:
+        return "This email address has sent several requests in the last hour. Please wait a while, or contact us if it is urgent."
+    if RFQ.objects.filter(created_at__gte=since).count() >= RFQ_SITE_WIDE:
+        return "We are receiving a lot of requests right now. Please try again in a little while."
+    key = f"rfq-visitor:{client_ip(request)}"
+    if cache.get(key, 0) >= RFQ_PER_VISITOR:
+        return "You have sent several requests in the last hour. Please wait a while, or contact us if it is urgent."
+    return None
+
+
+def rfq_limit_count(request):
+    from django.core.cache import cache
+
+    key = f"rfq-visitor:{client_ip(request)}"
+    cache.add(key, 0, RFQ_WINDOW_SECONDS)
+    try:
+        cache.incr(key)
+    except ValueError:
+        cache.set(key, 1, RFQ_WINDOW_SECONDS)
