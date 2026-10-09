@@ -1,3 +1,4 @@
+import secrets
 from unittest import mock
 
 from django.core import signing
@@ -10,7 +11,10 @@ from .authentication import TOKEN_SALT, make_token
 from .models import User
 
 ADMIN_EMAIL = "info@ghprocurement.com"
-ADMIN_PASSWORD = "Str0ng-pass-93"
+# Fresh random passwords each run, so no password literal lives in the repo.
+ADMIN_PASSWORD = "Pw-" + secrets.token_urlsafe(14)
+OTHER_PASSWORD = "Pw-" + secrets.token_urlsafe(14)
+USER_PASSWORD = "Pw-" + secrets.token_urlsafe(14)
 
 
 def mk(username, email, password, **extra):
@@ -182,7 +186,7 @@ class ChangePassword(AuthTestBase):
 
     def test_wrong_current_password(self):
         c = self.client_for(self.login().data["token"])
-        r = self.post(c, "wrong", "An0ther-good-pass")
+        r = self.post(c, "wrong", OTHER_PASSWORD)
         self.assertEqual(r.status_code, 400)
         self.assertIn("Current password", r.data["detail"])
 
@@ -195,12 +199,12 @@ class ChangePassword(AuthTestBase):
 
     def test_change_invalidates_old_tokens_and_keeps_session_alive(self):
         old = self.login().data["token"]
-        r = self.post(self.client_for(old), ADMIN_PASSWORD, "An0ther-good-pass")
+        r = self.post(self.client_for(old), ADMIN_PASSWORD, OTHER_PASSWORD)
         self.assertEqual(r.status_code, 200)
         self.assertEqual(self.client_for(old).get("/api/gettotal").status_code, 401)  # old token dead
         self.assertEqual(self.client_for(r.data["token"]).get("/api/gettotal").status_code, 200)  # new one works
         self.assertEqual(self.login().status_code, 401)  # old password dead
-        self.assertEqual(self.login(password="An0ther-good-pass").status_code, 200)
+        self.assertEqual(self.login(password=OTHER_PASSWORD).status_code, 200)
 
 
 from django.core.files.uploadedfile import SimpleUploadedFile
