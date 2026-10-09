@@ -3,89 +3,132 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="color-scheme" content="light" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="supported-color-schemes" content="light dark" />
     <title>{{ title }}</title>
     <style>
-      body, table, td, a { -webkit-text-size-adjust: 100%; }
-      img { border: 0; outline: none; text-decoration: none; }
-      body { margin: 0 !important; padding: 0 !important; width: 100% !important; background-color: #f1e7f5; }
+      body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+      table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+      img { border: 0; outline: none; text-decoration: none; -ms-interpolation-mode: bicubic; }
+      body { margin: 0 !important; padding: 0 !important; width: 100% !important; background-color: #e9e6ee; }
       @media screen and (max-width: 620px) {
         .container { width: 100% !important; }
-        .card-pad { padding-left: 22px !important; padding-right: 22px !important; }
-        .title { font-size: 23px !important; }
+        .pad { padding-left: 22px !important; padding-right: 22px !important; }
+        .headline { font-size: 25px !important; }
+        .ref { font-size: 26px !important; }
       }
     </style>
   </head>
-  <body style="margin:0;padding:0;background-color:#f1e7f5;">
-    <div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">{{ preheader }}</div>
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f1e7f5" style="background-color:#f1e7f5;">
+  <body style="margin:0;padding:0;background-color:#e9e6ee;">
+    <div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;">{{ preheader }}&#8199;&#847; &#8199;&#847; &#8199;&#847;</div>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#e9e6ee" style="background-color:#e9e6ee;">
       <tr>
-        <td align="center" style="padding:32px 12px 28px 12px;">
-          <table role="presentation" class="container" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;">
+        <td align="center" style="padding:28px 12px;">
 
-            <tr>
-              <td align="center" style="padding:0 0 22px 0;">
-                {% if logo_cid %}<img src="cid:{{ logo_cid }}" width="150" alt="GH Procurement" style="display:inline-block;width:150px;max-width:100%;height:auto;" />{% else %}<img src="{{ logo_url }}" width="150" alt="GH Procurement" style="display:inline-block;width:150px;max-width:100%;height:auto;" />{% endif %}
-              </td>
-            </tr>
+          <table role="presentation" class="container" width="600" cellpadding="0" cellspacing="0" border="0" bgcolor="#1c0624" style="width:600px;max-width:600px;background-color:#1c0624;border-radius:18px;">
 
+            <!-- header: photo, logo, label and headline -->
             <tr>
-              <td>
-                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="background-color:#ffffff;border-top:6px solid #febcbd;border-radius:16px;">
+              <td background="{{ header_image }}" bgcolor="#1c0624" height="230" valign="top" class="pad" style="background-color:#1c0624;background-image:url('{{ header_image }}');background-size:cover;background-position:center;border-radius:18px 18px 0 0;padding:28px 36px 30px 36px;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                   <tr>
-                    <td class="card-pad" style="padding:36px 40px 34px 40px;font-family:Arial,Helvetica,sans-serif;">
-
-                      <h1 class="title" style="margin:0 0 24px 0;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:1.25;font-weight:bold;color:#420e51;">{{ title }}</h1>
-
-                      {% for paragraph in paragraphs %}
-                      <p style="margin:0 0 16px 0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.7;color:#333333;">{{ paragraph }}</p>
-                      {% endfor %}
-
-                      {% if details %}
-                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#faf6fc" style="background-color:#faf6fc;border-radius:12px;margin:6px 0 8px 0;">
-                        {% for label, value in details %}
-                        <tr>
-                          <td style="padding:{% if forloop.first %}16px{% else %}6px{% endif %} 8px {% if forloop.last %}16px{% else %}6px{% endif %} 18px;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#6b6676;width:34%;vertical-align:top;">{{ label }}</td>
-                          <td style="padding:{% if forloop.first %}16px{% else %}6px{% endif %} 18px {% if forloop.last %}16px{% else %}6px{% endif %} 8px;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:bold;color:#420e51;vertical-align:top;">{{ value }}</td>
-                        </tr>
-                        {% endfor %}
-                      </table>
-                      {% endif %}
-
-                      {% if button_url %}
-                      <table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" style="margin:28px auto 8px auto;">
-                        <tr>
-                          <td align="center" bgcolor="#420e51" style="background-color:#420e51;border-radius:999px;">
-                            <a href="{{ button_url }}" style="display:inline-block;padding:15px 34px;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;line-height:1;color:#febcbd;text-decoration:none;border-radius:999px;">{{ button_label }}</a>
-                          </td>
-                        </tr>
-                      </table>
-                      {% endif %}
-
-                      {% if note %}
-                      <p style="margin:20px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.6;color:#6b6676;">{{ note }}</p>
-                      {% endif %}
-
-                      <div style="margin-top:28px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#333333;">
-                        Regards,<br />
-                        <strong style="color:#420e51;">GH Procurement</strong>
-                      </div>
+                    <td align="left" valign="middle">
+                      {% if logo_cid %}<img src="cid:{{ logo_cid }}" width="130" alt="GH Procurement" style="display:block;width:130px;height:auto;" />{% else %}<img src="{{ logo_url }}" width="130" alt="GH Procurement" style="display:block;width:130px;height:auto;" />{% endif %}
                     </td>
+                    <td align="right" valign="middle" style="font-family:Arial,Helvetica,sans-serif;font-size:12px;font-weight:bold;letter-spacing:0.1em;text-transform:uppercase;color:#febcbd;">{{ label }}</td>
+                  </tr>
+                  <tr><td colspan="2" height="86" style="font-size:0;line-height:0;">&nbsp;</td></tr>
+                  <tr>
+                    <td colspan="2" class="headline" style="font-family:Arial,Helvetica,sans-serif;font-size:29px;line-height:1.2;font-weight:bold;color:#ffffff;">{{ title }}</td>
                   </tr>
                 </table>
               </td>
             </tr>
 
+            <!-- body -->
             <tr>
-              <td align="center" style="padding:24px 12px 0 12px;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.8;text-align:center;color:#6b6676;">
+              <td class="pad" style="padding:30px 36px 8px 36px;font-family:Arial,Helvetica,sans-serif;">
+
+                {% if reference %}
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#2a0a36" style="background-color:#2a0a36;border:2px dashed #febcbd;border-radius:14px;margin:0 0 24px 0;">
+                  <tr>
+                    <td align="center" style="padding:20px 22px;">
+                      <div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;font-weight:bold;letter-spacing:0.14em;text-transform:uppercase;color:#febcbd;margin:0 0 4px 0;">Your reference</div>
+                      <div class="ref" style="font-family:Arial,Helvetica,sans-serif;font-size:32px;font-weight:bold;letter-spacing:0.04em;color:#ffffff;">{{ reference }}</div>
+                    </td>
+                  </tr>
+                </table>
+                {% endif %}
+
+                {% for paragraph in paragraphs %}
+                <p style="margin:0 0 18px 0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.75;color:#f1e3f5;">{{ paragraph }}</p>
+                {% endfor %}
+
+                {% if details %}
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#2a0a36" style="background-color:#2a0a36;border-radius:12px;margin:6px 0 26px 0;">
+                  {% for label, value in details %}
+                  <tr>
+                    <td style="padding:{% if forloop.first %}18px{% else %}0{% endif %} 20px 0 20px;">
+                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                        <tr>
+                          <td style="padding:13px 8px 13px 0;{% if not forloop.last %}border-bottom:1px solid #43185a;{% endif %}font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#c7b0cf;width:38%;vertical-align:top;">{{ label }}</td>
+                          <td align="right" style="padding:13px 0;{% if not forloop.last %}border-bottom:1px solid #43185a;{% endif %}font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:bold;color:#ffffff;vertical-align:top;">{{ value }}</td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+                  {% endfor %}
+                  <tr><td height="6" style="font-size:0;line-height:0;">&nbsp;</td></tr>
+                </table>
+                {% endif %}
+
+                {% if steps %}
+                <div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;font-weight:bold;letter-spacing:0.12em;text-transform:uppercase;color:#febcbd;margin:0 0 14px 0;">What happens next</div>
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 26px 0;">
+                  {% for step_title, step_text in steps %}
+                  <tr>
+                    <td width="42" valign="top" style="padding:0 0 14px 0;">
+                      <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td width="28" height="28" align="center" valign="middle" bgcolor="#febcbd" style="background-color:#febcbd;border-radius:14px;font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:bold;color:#420e51;">{{ forloop.counter }}</td></tr></table>
+                    </td>
+                    <td valign="top" style="padding:0 0 14px 0;font-family:Arial,Helvetica,sans-serif;font-size:14.5px;line-height:1.55;color:#ffffff;"><b>{{ step_title }}</b><br /><span style="color:#c7b0cf;">{{ step_text }}</span></td>
+                  </tr>
+                  {% endfor %}
+                </table>
+                {% endif %}
+
+                {% if button_url %}
+                <table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" style="margin:6px auto 22px auto;">
+                  <tr>
+                    <td align="center" bgcolor="#febcbd" style="background-color:#febcbd;border-radius:999px;">
+                      <a href="{{ button_url }}" style="display:inline-block;padding:16px 38px;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;line-height:1;color:#420e51;text-decoration:none;border-radius:999px;">{{ button_label }}</a>
+                    </td>
+                  </tr>
+                </table>
+                {% endif %}
+
+                {% if note %}
+                <p style="margin:0 0 26px 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.6;color:#b79bc1;text-align:center;">{{ note }}</p>
+                {% endif %}
+
+                <div style="border-top:1px solid #3d1649;padding:20px 0 24px 0;text-align:center;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#f1e3f5;">
+                  Regards,<br /><strong style="color:#febcbd;">GH Procurement</strong>
+                </div>
+              </td>
+            </tr>
+
+            <!-- footer -->
+            <tr>
+              <td align="center" bgcolor="#12031a" class="pad" style="background-color:#12031a;border-radius:0 0 18px 18px;padding:22px 36px;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.8;color:#b79bc1;">
                 {{ office }}<br />
-                <a href="mailto:{{ contact_email }}" style="color:#6b6676;text-decoration:none;">{{ contact_email }}</a>
+                <a href="mailto:{{ contact_email }}" style="color:#b79bc1;text-decoration:none;">{{ contact_email }}</a>
                 &nbsp;&middot;&nbsp; {{ phone }} &nbsp;&middot;&nbsp;
-                <a href="https://{{ website }}" style="color:#6b6676;text-decoration:none;">{{ website }}</a><br />
+                <a href="https://{{ website }}" style="color:#b79bc1;text-decoration:none;">{{ website }}</a><br />
                 &copy; {{ year }} GH Procurement. All rights reserved.
               </td>
             </tr>
           </table>
+
         </td>
       </tr>
     </table>

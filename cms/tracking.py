@@ -157,25 +157,37 @@ def site_url():
     return getattr(settings, "PUBLIC_SITE_URL", "https://www.ghprocurement.com").rstrip("/")
 
 
-def _send(to, subject, title, paragraphs, button_label="", button_url="", note="", details=None):
+def _send(to, subject, title, paragraphs, button_label="", button_url="", note="", details=None,
+          label="", reference="", steps=None):
     from .task import LOGO_CID, LOGO_FALLBACK_URL, LOGO_PATH, company_info
 
     logo = None
     try:
-        with open(LOGO_PATH, "rb") as fh:
+        # the white logo: these emails have a dark header
+        with open(LOGO_PATH.replace("email-logo.png", "email-logo-white.png"), "rb") as fh:
             logo = fh.read()
     except OSError:
         pass
     info = company_info()
     context = {
         "title": title, "paragraphs": paragraphs, "button_label": button_label, "button_url": button_url,
-        "note": note, "details": details or [], "preheader": paragraphs[0][:110] if paragraphs else title,
+        "note": note, "details": details or [], "label": label, "reference": reference, "steps": steps or [],
+        "preheader": paragraphs[0][:110] if paragraphs else title,
+        "header_image": getattr(settings, "EMAIL_HEADER_IMAGE", "https://cms.ghprocurement.com/email/header.jpg"),
         "logo_cid": LOGO_CID if logo else "", "logo_url": LOGO_FALLBACK_URL,
         "year": datetime.now().year, **info,
     }
     html = render_to_string("email_customer.html", context)
-    text = "\n\n".join([title] + paragraphs + ([f"{button_label}: {button_url}"] if button_url else []) + ([note] if note else []))
-    msg = EmailMultiAlternatives(subject=subject, body=text, from_email="GH Procurement <info@ghprocurement.com>", to=[to])
+    lines = [title, ""] + ([f"Reference: {reference}", ""] if reference else []) + paragraphs + [""]
+    lines += [f"{k}: {v}" for k, v in (details or [])]
+    if steps:
+        lines += ["", "What happens next:"] + [f"{i}. {t} - {x}" for i, (t, x) in enumerate(steps, 1)]
+    if button_url:
+        lines += ["", f"{button_label}: {button_url}"]
+    if note:
+        lines += ["", note]
+    lines += ["", "Regards,", "GH Procurement"]
+    msg = EmailMultiAlternatives(subject=subject, body="\n".join(lines), from_email="GH Procurement <info@ghprocurement.com>", to=[to])
     msg.attach_alternative(html, "text/html")
     if logo:
         from email.mime.image import MIMEImage
@@ -191,27 +203,36 @@ def _first_name(user_or_rfq):
     return (name or "").split(" ")[0] or "there"
 
 
+NEXT_STEPS = [
+    ("We send your quotation", "A formal quotation by email."),
+    ("You confirm", "We start sourcing for you."),
+    ("You follow it home", "Each step shows on your account until delivery."),
+]
+
+
 def email_request_received(rfq_id, new_account):
     """Sent right after a request: its reference, and (new account) the link to choose a password."""
+    from .references import format_date
+
     try:
         rfq = RFQ.objects.select_related("user").get(pk=rfq_id)
         user = rfq.user
-        paragraphs = [
-            f"Hello {_first_name(rfq)},",
-            f"Thank you. We received your request ({rfq.reference}) and will send a quotation within 48 hours.",
-        ]
+        details = [("Request", short_title(rfq)), ("Company", rfq.company),
+                   ("Received", format_date(rfq.created_at)), ("Quotation within", "48 hours")]
+        common = dict(label="Request receipt", reference=rfq.reference, steps=NEXT_STEPS, details=details)
+        title = f"We have your request, {_first_name(rfq)}."
         if new_account and user.email.lower() == rfq.email.lower():
             link = f"{site_url()}/#/set-password?token={make_set_password_token(user)}"
-            paragraphs.append("We also made you an account so you can follow this request, step by step. Choose your password with the button below. The link works for 24 hours.")
-            _send(rfq.email, f"We have your request {rfq.reference}", "Request received", paragraphs,
+            paragraphs = ["Thank you. We received your request and will send your quotation within 48 hours.",
+                          "We made you an account so you can follow it, step by step. Choose your password (the link works for 24 hours):"]
+            _send(rfq.email, f"We have your request {rfq.reference}", title, paragraphs,
                   "Choose my password", link,
-                  "If you did not send this request, ignore this email. Nothing happens until the link is used.",
-                  [("Reference", rfq.reference), ("Item", short_title(rfq))])
+                  "If you did not send this request, ignore this email. Nothing happens until the link is used.", **common)
         else:
-            paragraphs.append("Sign in to follow it, step by step.")
-            _send(rfq.email, f"We have your request {rfq.reference}", "Request received", paragraphs,
-                  "Track my request", f"{site_url()}/#/account/{rfq.pk}", "",
-                  [("Reference", rfq.reference), ("Item", short_title(rfq))])
+            paragraphs = ["Thank you. We received your request and will send your quotation within 48 hours.",
+                          "Sign in to follow it, step by step."]
+            _send(rfq.email, f"We have your request {rfq.reference}", title, paragraphs,
+                  "Track my request", f"{site_url()}/#/account/{rfq.pk}", "", **common)
     except Exception:  # noqa: BLE001
         logger.exception("could not send the request-received email for %s", rfq_id)
 
@@ -223,7 +244,8 @@ def email_password_link(user_id):
         link = f"{site_url()}/#/set-password?token={make_set_password_token(user)}"
         _send(user.email, "Choose your password", "Choose your password",
               [f"Hello {_first_name(user)},", "Use the button below to choose a password for your GH Procurement account. The link works once and expires after 24 hours."],
-              "Choose my password", link, "If you did not ask for this, ignore this email. Your account is unchanged.")
+              "Choose my password", link, "If you did not ask for this, ignore this email. Your account is unchanged.",
+              label="Your account")
     except Exception:  # noqa: BLE001
         logger.exception("could not send the password link to %s", user_id)
 
@@ -233,7 +255,7 @@ def email_update(update_id):
     try:
         update = RFQUpdate.objects.select_related("rfq").get(pk=update_id)
         rfq = update.rfq
-        paragraphs = [f"Hello {_first_name(rfq)},", f"There is an update on your request {rfq.reference}.", update.headline]
+        paragraphs = [f"Hello {_first_name(rfq)}, there is an update on your request."]
         if update.details:
             paragraphs.append(update.details)
         details = [("Request", short_title(rfq)), ("Stage", f"{STAGE_LABELS.get(update.stage, update.stage)} (step {step_of(update.stage)} of {len(STAGE_ORDER)})")]
@@ -241,8 +263,8 @@ def email_update(update_id):
             details.append(("Where", update.location))
         if rfq.estimated_delivery:
             details.append(("Estimated delivery", f"{rfq.estimated_delivery.day} {rfq.estimated_delivery:%B %Y}"))
-        _send(rfq.email, f"{rfq.reference}: {update.headline}", update.headline, paragraphs[1:], "See my order",
-              f"{site_url()}/#/account/{rfq.pk}", "", details)
+        _send(rfq.email, f"{rfq.reference}: {update.headline}", update.headline, paragraphs, "See my order",
+              f"{site_url()}/#/account/{rfq.pk}", "", details, label="Progress update", reference=rfq.reference)
         RFQUpdate.objects.filter(pk=update.pk).update(emailed=True)
     except Exception:  # noqa: BLE001
         logger.exception("could not send the update email for %s", update_id)

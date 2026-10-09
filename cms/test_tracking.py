@@ -296,3 +296,53 @@ class AdminPostsUpdates(TrackBase):
 
     def test_a_customer_with_requests_still_cannot_be_deleted(self):
         self.assertEqual(self.super.delete(f"/api/user/{self.rfq.user.pk}/").status_code, 409)
+
+
+class TheEmails(TrackBase):
+    """What the customer actually reads."""
+
+    def html(self, index=-1):
+        return mail.outbox[index].alternatives[0][0]
+
+    def test_request_received_shows_the_reference_details_steps_and_button(self):
+        self.submit()
+        h, m = self.html(), mail.outbox[-1]
+        rfq = RFQ.objects.get()
+        for must in (rfq.reference, "20 office chairs", "Acme Supplies", "Quotation within", "48 hours", "What happens next",
+                     "We send your quotation", "Choose my password", "Request receipt", "We have your request, Ada."):
+            self.assertIn(must, h, must)
+        self.assertIn("email/header.jpg", h)  # the photo at the top
+        self.assertIn(rfq.reference, m.body)  # and the plain-text version has it too
+        self.assertIn("set-password?token=", m.body)
+
+    def test_a_returning_customer_gets_a_track_button_not_a_password_link(self):
+        self.submit()
+        self.submit(item="more chairs")
+        h = self.html()
+        self.assertIn("Track my request", h)
+        self.assertNotIn("set-password", h)
+
+    def test_update_email_has_the_headline_stage_place_and_estimate(self):
+        self.submit()
+        rfq = RFQ.objects.get()
+        mail.outbox.clear()
+        self.super.post(f"/api/rfqs/{rfq.pk}/updates/", {"stage": "shipped", "headline": "Handed to the carrier", "details": "Truck leaves today",
+                                                          "location": "Lagos port", "estimated_delivery": "2026-11-20"}, format="json")
+        h = self.html()
+        for must in ("Handed to the carrier", "Truck leaves today", "Shipped (step 6 of 8)", "Lagos port", "20 November 2026", "Progress update", "See my order", rfq.reference):
+            self.assertIn(must, h, must)
+        self.assertNotIn("What happens next", h)  # that block is only for the first email
+
+    def test_customer_text_is_escaped_in_the_email(self):
+        self.submit(name="Ada <script>alert(1)</script>", item="<b>x</b>")
+        h = self.html()
+        self.assertNotIn("<script>alert(1)</script>", h)
+        self.assertNotIn("<b>x</b>", h.split("What happens next")[0])
+
+    def test_password_link_email(self):
+        self.submit()
+        mail.outbox.clear()
+        self.anon.post("/api/customer/request-link/", {"email": "ada@acme.com"}, format="json")
+        h = self.html()
+        self.assertIn("Your account", h)
+        self.assertIn("Choose my password", h)
