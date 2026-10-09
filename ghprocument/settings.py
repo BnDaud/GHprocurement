@@ -184,6 +184,8 @@ CMS_SUPER_ADMIN_EMAILS = [
 # Postmark inbound webhook: mail forwarded from the company mailbox arrives at
 # /api/inbound/<this secret>/. Leave unset to switch the inbox feed off.
 POSTMARK_INBOUND_SECRET = os.getenv("POSTMARK_INBOUND_SECRET", "")
+# where the customer-facing site lives (links in customer emails point here)
+PUBLIC_SITE_URL = os.getenv("PUBLIC_SITE_URL", "https://www.ghprocurement.com")
 
 REST_FRAMEWORK = {
     # secure by default: a view is admin-only unless it says otherwise

@@ -1,5 +1,6 @@
 from django.shortcuts import render
-from .models import User ,Catalog, FAQ , MetaData , Service , RFQ , SentEmail , InboxMessage
+from .models import User ,Catalog, FAQ , MetaData , Service , RFQ , SentEmail , InboxMessage , STAGE_ORDER
+from . import tracking
 from .references import create_sent_email
 from .serial import InboxListSerial , InboxSerial , AdminCreateSerial , AdminSerial , SentEmailListSerial , SentEmailSerial , UserSerial , CatalogSerial , MetaDataSerial , FAQSerial , ServicesSerial , RFQSerial , EmailSerial
 # Create your views here.
@@ -95,22 +96,82 @@ class RFQView(AuditedMixin, ModelViewSet):
     def create(self, request, *args, **kwargs):
         serial = self.get_serializer(data = request.data)
         
-        data = request.data
         if serial.is_valid() :
-            #print(serial.validated_data)
             instance = serial.save()
-            log(None, A.QUOTE_RECEIVED, "quote request", f"{instance.name} ({instance.company})")
-            data["image_url"] = instance.file.url
-            # SendRFQ(data)
-            threading.Thread(
-        target=sendRFQAPI,
-        args=(data,)
-        ).start()
+            log(None, A.QUOTE_RECEIVED, "quote request", f"{instance.reference}: {instance.name} ({instance.company})")
+            tracking.in_background(tracking.email_request_received, str(instance.pk), bool(getattr(instance, "_new_account", False)))
+            return Response({"reference": instance.reference, "email": instance.email, "id": str(instance.pk),
+                             "new_account": bool(getattr(instance, "_new_account", False))}, status=status.HTTP_200_OK)
         
-        
-            return Response(serial.data , status=status.HTTP_200_OK)
-        
-        return Response({"Error":"Bad Request"} , status=status.HTTP_400_BAD_REQUEST)
+        return Response({"Error":"Bad Request", "fields": serial.errors} , status=status.HTTP_400_BAD_REQUEST)
+
+    # ---- progress updates (admin): what the customer sees on their tracking page
+    def _update_body(self, request, partial=False):
+        d = request.data
+        stage = str(d.get("stage", "")).strip()
+        headline = str(d.get("headline", "")).strip()
+        errors = {}
+        if stage not in STAGE_ORDER and not (partial and "stage" not in d):
+            errors["stage"] = "Choose a stage."
+        if (not headline) and not (partial and "headline" not in d):
+            errors["headline"] = "Add a headline."
+        if len(headline) > 200:
+            errors["headline"] = "Keep the headline under 200 characters."
+        delivery = d.get("estimated_delivery", None)
+        if delivery not in (None, ""):
+            try:
+                import datetime as _dt
+                delivery = _dt.date.fromisoformat(str(delivery))
+            except ValueError:
+                errors["estimated_delivery"] = "Use the date format YYYY-MM-DD."
+        return d, errors, delivery
+
+    @action(detail=True, methods=["get", "post"], url_path="updates")
+    def updates(self, request, pk=None):
+        rfq = self.get_object()
+        if request.method == "GET":
+            return Response(tracking.request_detail(rfq)["updates"])
+        d, errors, delivery = self._update_body(request)
+        if errors:
+            return Response({"detail": " ".join(errors.values()), "fields": errors}, status=status.HTTP_400_BAD_REQUEST)
+        update = tracking.add_update(rfq, d["stage"], d["headline"], str(d.get("details", "")),
+                                     str(d.get("location", "")), created_by=request.user)
+        if delivery not in (None, ""):
+            rfq.estimated_delivery = delivery
+            rfq.save(update_fields=["estimated_delivery"])
+        notify = d.get("notify", True)
+        if isinstance(notify, str):
+            notify = notify.lower() in ("1", "true", "yes", "on")
+        log(request, A.CREATED, "order update", f"{rfq.reference}: {update.headline}",
+            f"stage {update.stage}" + ("" if notify else ", customer not emailed"))
+        if notify:
+            tracking.in_background(tracking.email_update, str(update.pk))
+        return Response(tracking.request_detail(rfq), status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["patch", "delete"], url_path=r"updates/(?P<update_id>[0-9a-fA-F-]{32,36})")
+    def update_item(self, request, pk=None, update_id=None):
+        rfq = self.get_object()
+        update = rfq.updates.filter(pk=update_id).first()
+        if update is None:
+            return Response({"detail": "Update not found."}, status=status.HTTP_404_NOT_FOUND)
+        if request.method == "DELETE":
+            label = f"{rfq.reference}: {update.headline}"
+            update.delete()
+            tracking.recompute_status(rfq)
+            log(request, A.DELETED, "order update", label)
+            return Response(tracking.request_detail(rfq))
+        d, errors, delivery = self._update_body(request, partial=True)
+        if errors:
+            return Response({"detail": " ".join(errors.values()), "fields": errors}, status=status.HTTP_400_BAD_REQUEST)
+        changed = []
+        for field in ("stage", "headline", "details", "location"):
+            if field in d:
+                setattr(update, field, str(d[field]).strip())
+                changed.append(field)
+        update.save()
+        tracking.recompute_status(rfq)
+        log(request, A.UPDATED, "order update", f"{rfq.reference}: {update.headline}", "fields: " + ", ".join(changed))
+        return Response(tracking.request_detail(rfq))
     
 @api_view(["GET"])
 def getTotalView(req):

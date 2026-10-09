@@ -14,6 +14,8 @@ from .models import User
 
 TOKEN_SALT = "cms-auth-token"
 TOKEN_MAX_AGE = 60 * 60 * 3  # a sign-in lasts 3 hours
+CUSTOMER_SALT = "customer-auth-token"
+CUSTOMER_MAX_AGE = 60 * 60 * 24  # a customer sign-in lasts a day
 
 
 def _fingerprint(user):
@@ -30,6 +32,12 @@ def make_token(user):
     )
 
 
+def make_customer_token(user):
+    """A customer's sign-in. Signed with its own salt, so it can never be used
+    as a CMS (admin) token, and admin permissions still require staff."""
+    return signing.dumps({"uid": str(user.pk), "fp": _fingerprint(user)}, salt=CUSTOMER_SALT)
+
+
 class SignedTokenAuthentication(BaseAuthentication):
     keyword = b"bearer"
 
@@ -44,12 +52,20 @@ class SignedTokenAuthentication(BaseAuthentication):
         except UnicodeError:
             raise AuthenticationFailed("Invalid authorization header.")
 
+        data = None
         try:
             data = signing.loads(token, salt=TOKEN_SALT, max_age=TOKEN_MAX_AGE)
         except signing.SignatureExpired:
             raise AuthenticationFailed("Session expired. Sign in again.")
         except signing.BadSignature:
-            raise AuthenticationFailed("Invalid token.")
+            pass
+        if data is None:  # not an admin token: try a customer token
+            try:
+                data = signing.loads(token, salt=CUSTOMER_SALT, max_age=CUSTOMER_MAX_AGE)
+            except signing.SignatureExpired:
+                raise AuthenticationFailed("Session expired. Sign in again.")
+            except signing.BadSignature:
+                raise AuthenticationFailed("Invalid token.")
 
         try:
             user = User.objects.select_related("mfa").filter(pk=data.get("uid"), is_active=True).first()

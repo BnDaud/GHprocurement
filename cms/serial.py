@@ -86,12 +86,12 @@ class ServicesSerial(ModelSerializer) :
 class RFQSerial(ModelSerializer):
     user = UserSerial(read_only = True) 
     file_url = SerializerMethodField(read_only = True)
-    file = ImageField()
+    file = ImageField(required=False, allow_null=True)
     
     class Meta:
         model = RFQ
         fields = "__all__"
-        
+        read_only_fields = ["reference", "reference_year", "reference_number", "status", "created_at"]
         extra_kwargs = {"file":{"write_only":True}}
         
 
@@ -99,27 +99,24 @@ class RFQSerial(ModelSerializer):
         return obj.file.url if obj.file else None
     
     def create(self, validated_data):
-        
-        user , created = User.objects.get_or_create(
-                        username = validated_data["company"] ,
-                        defaults={
-                        "email":validated_data["email"] , 
-                        "phone" : validated_data["phone"] , 
-                        "dp" : validated_data["file"]} )
-        if created:
-            user.set_password(validated_data["company"])
-        
-            user.save()
-        rfq = RFQ.objects.create(
+        from .references import allocate_rfq_reference
+        from . import tracking
+
+        # the account is found (or made) from the EMAIL, never the company name;
+        # a new one has no password until the customer picks one from the emailed link
+        user, created = tracking.get_or_create_customer(
+            validated_data["email"], validated_data["name"], validated_data.get("phone") or "")
+        rfq = allocate_rfq_reference(
             user=user,
             email=validated_data["email"],
             name=validated_data["name"],
+            phone=validated_data.get("phone"),
             company=validated_data["company"],
             item=validated_data["item"],
             file=validated_data.get("file"),
                )
-        
-        
+        tracking.add_update(rfq, "received", "We have your request")
+        rfq._new_account = created
         return rfq
     
 ALLOWED_ATTACHMENTS = {

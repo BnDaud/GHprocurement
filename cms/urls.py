@@ -4,6 +4,8 @@ from .views import InboxView , AdminView , SentEmailView , UserView ,  CatalogVi
 from .auth_views import (LoginView, LoginMfaView, MeView, ChangePasswordView, MfaSetupView,
                          MfaConfirmView, MfaDisableView, MfaRecoveryCodesView)
 from .inbound import postmark_inbound
+from .customer_views import (CustomerLoginView, RequestLinkView, SetPasswordView, CustomerMeView,
+                             CustomerRequestsView, CustomerRequestDetailView, GuestTrackView)
 from django.urls import path , include
 import requests , os
 from django.http import HttpResponse , JsonResponse
@@ -52,6 +54,13 @@ urlpatterns = [path("gettotal" , getTotalView , name = "getTotal"),
 path("alldata/" , AllData , name = "alldata" ), 
 path("emails/" ,EmailView.as_view() ),
   path("inbound/<str:secret>/", postmark_inbound),
+  path("customer/login/", CustomerLoginView.as_view()),
+  path("customer/request-link/", RequestLinkView.as_view()),
+  path("customer/set-password/", SetPasswordView.as_view()),
+  path("customer/me/", CustomerMeView.as_view()),
+  path("customer/requests/", CustomerRequestsView.as_view()),
+  path("customer/requests/<str:pk>/", CustomerRequestDetailView.as_view()),
+  path("customer/track/", GuestTrackView.as_view()),
   path("auth/login/", LoginView.as_view()),
   path("auth/login/mfa/", LoginMfaView.as_view()),
   path("auth/me/", MeView.as_view()),

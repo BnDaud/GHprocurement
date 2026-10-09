@@ -15,7 +15,7 @@ DATABASES = {
     }
 }
 ALLOWED_HOSTS = ["localhost", "127.0.0.1", "testserver"]
-CORS_ALLOWED_ORIGINS = list(CORS_ALLOWED_ORIGINS) + ["http://localhost:3001"]  # noqa: F405
+CORS_ALLOWED_ORIGINS = list(CORS_ALLOWED_ORIGINS) + ["http://localhost:3001", "http://localhost:3000"]  # noqa: F405
 REST_FRAMEWORK = {  # noqa: F405
     **REST_FRAMEWORK,  # noqa: F405
     "DEFAULT_THROTTLE_RATES": {"login": "1000/min", "password": "1000/min"},
@@ -24,3 +24,9 @@ PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]  # fast tes
 
 if os.environ.get("TEST_LOCMEM_EMAIL"):  # local checks that must not send real mail
     EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
+
+TRACKING_EMAILS_SYNC = True
+PUBLIC_SITE_URL = os.environ.get("PUBLIC_SITE_URL", "http://localhost:3000")
+if os.environ.get("TEST_FILE_EMAIL"):  # local checks: write each email to a file you can open
+    EMAIL_BACKEND = "django.core.mail.backends.filebased.EmailBackend"
+    EMAIL_FILE_PATH = os.environ["TEST_FILE_EMAIL"]

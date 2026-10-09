@@ -126,16 +126,12 @@ class ChangesAreRecorded(AuditBase):
         self.assertNotIn("private words", str(AuditLog.objects.values()))
 
     def test_public_quote_request_is_recorded_without_an_actor(self):
-        with mock.patch("cms.serial.RFQSerial.is_valid", return_value=True), \
-             mock.patch("cms.serial.RFQSerial.save") as save, \
-             mock.patch("cms.views.threading.Thread"):
-            inst = mock.Mock(name="x"); inst.name = "Buyer"; inst.company = "Acme"; inst.file.url = "http://f"
-            save.return_value = inst
-            with mock.patch("cms.serial.RFQSerial.data", new_callable=mock.PropertyMock, return_value={}):
-                r = self.anon.post("/api/rfqs/", {"name": "Buyer"}, format="json")
-        self.assertEqual(r.status_code, 200)
+        r = self.anon.post("/api/rfqs/", {"name": "Buyer One", "email": "buyer1@acme.com", "company": "Acme", "phone": "+234 1", "item": "20 chairs"}, format="multipart")
+        self.assertEqual(r.status_code, 200, r.data)
         e = self.one(action="quote_received")
-        self.assertEqual((e.actor_email, e.target_label), ("", "Buyer (Acme)"))
+        self.assertEqual(e.actor_email, "")
+        self.assertIn("Buyer One (Acme)", e.target_label)
+        self.assertIn(r.data["reference"], e.target_label)
 
 
 class TwoStepIsRecorded(AuditBase):

@@ -4,6 +4,7 @@ from cloudinary.models import CloudinaryField
 from django.contrib.auth.models import AbstractUser
 from uuid import uuid4
 from decimal import Decimal
+from django.utils import timezone
 
 class User (AbstractUser):
     id = models.UUIDField(default=uuid4 , primary_key=True , editable=False)
@@ -80,6 +81,22 @@ class FAQ(models.Model):
     answer = models.TextField(max_length=2000 , blank=False)
     
     
+class RFQStage(models.TextChoices):
+    """The steps a quote request goes through, in order."""
+
+    RECEIVED = "received", "Request received"
+    QUOTED = "quoted", "Quoted"
+    CONFIRMED = "confirmed", "Confirmed"
+    SOURCING = "sourcing", "Sourcing"
+    QUALITY = "quality", "Quality check"
+    SHIPPED = "shipped", "Shipped"
+    CUSTOMS = "customs", "Customs"
+    DELIVERED = "delivered", "Delivered"
+
+
+STAGE_ORDER = [value for value, _ in RFQStage.choices]
+
+
 class RFQ(models.Model):
     id = models.UUIDField(default=uuid4,primary_key=True , editable=False)
     # PROTECT: deleting an account must never silently wipe its quote requests
@@ -90,7 +107,47 @@ class RFQ(models.Model):
     
     company= models.CharField(max_length = 500 , blank = False)
     item = models.TextField(max_length=5000 , blank=False)
-    file = CloudinaryField("rfq_Image" , folder = "RFQ_Image")
+    file = CloudinaryField("rfq_Image" , folder = "RFQ_Image", blank=True, null=True)
+
+    # tracking: a reference such as RFQ-2026-0014, numbered per year
+    reference = models.CharField(max_length=30, unique=True, null=True, blank=True)
+    reference_year = models.PositiveSmallIntegerField(null=True, blank=True)
+    reference_number = models.PositiveIntegerField(null=True, blank=True)
+    status = models.CharField(max_length=12, choices=RFQStage.choices, default=RFQStage.RECEIVED)
+    estimated_delivery = models.DateField(null=True, blank=True)
+    delivery_address = models.CharField(max_length=500, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["reference_year", "reference_number"], name="unique_rfq_reference_per_year"),
+        ]
+
+    def __str__(self):
+        return self.reference or f"{self.company}: {self.item[:40]}"
+
+
+class RFQUpdate(models.Model):
+    """One progress update on a quote request. The customer sees these on
+    their tracking page; the newest one decides the request's status."""
+
+    id = models.UUIDField(default=uuid4, primary_key=True, editable=False)
+    rfq = models.ForeignKey(RFQ, related_name="updates", on_delete=models.CASCADE)
+    stage = models.CharField(max_length=12, choices=RFQStage.choices)
+    headline = models.CharField(max_length=200)
+    details = models.TextField(blank=True)
+    location = models.CharField(max_length=200, blank=True)
+    emailed = models.BooleanField(default=False)  # the customer was emailed about it
+    created_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["rfq", "-created_at"])]
+
+    def __str__(self):
+        return f"{self.rfq_id} {self.stage}: {self.headline}"
 
 class SentEmail(models.Model):
     """One row per email sent from the CMS. RFQ replies also get a reference

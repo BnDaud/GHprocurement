@@ -1,0 +1,286 @@
+"""Customer accounts and order tracking."""
+import re
+import secrets
+from datetime import timedelta
+from unittest import mock
+
+from django.core import mail, signing
+from django.utils import timezone
+from rest_framework.test import APIClient
+
+from . import tracking
+from .authentication import make_customer_token
+from .models import AuditLog, RFQ, RFQUpdate, User
+from .test_admins import AdminBase
+from .tests import ADMIN_EMAIL
+
+STRONG = "Pw-" + secrets.token_urlsafe(14)
+FORM = {"name": "Ada Obi", "email": "ada@acme.com", "company": "Acme Supplies", "phone": "+2348000000000", "item": "20 office chairs"}
+
+
+def customer_client(user):
+    c = APIClient()
+    c.credentials(HTTP_AUTHORIZATION=f"Bearer {make_customer_token(user)}")
+    return c
+
+
+class TrackBase(AdminBase):
+    def submit(self, **extra):
+        mail.outbox.clear()
+        return self.anon.post("/api/rfqs/", {**FORM, **extra}, format="json")
+
+    def link_from_outbox(self, index=-1):
+        body = mail.outbox[index].alternatives[0][0]
+        m = re.search(r"set-password\?token=([^\"&<\s]+)", body)
+        return m.group(1) if m else None
+
+
+class RequestCreatesAnAccount(TrackBase):
+    def test_new_customer_gets_an_account_a_reference_and_a_password_link(self):
+        r = self.submit()
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertRegex(r.data["reference"], r"^RFQ-\d{4}-0001$")
+        self.assertTrue(r.data["new_account"])
+        user = User.objects.get(email="ada@acme.com")
+        self.assertFalse(user.has_usable_password())  # no guessable password (it used to be the company name)
+        self.assertFalse(user.is_staff or user.is_superuser)
+        rfq = RFQ.objects.get()
+        self.assertEqual((rfq.user, rfq.status), (user, "received"))
+        self.assertEqual(rfq.updates.count(), 1)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ["ada@acme.com"])
+        self.assertIn(rfq.reference, mail.outbox[0].subject)
+        self.assertTrue(self.link_from_outbox())
+
+    def test_second_request_reuses_the_account_and_sends_no_password_link(self):
+        self.submit()
+        r = self.submit(item="500 helmets", company="Other Name Ltd")
+        self.assertFalse(r.data["new_account"])
+        self.assertEqual(User.objects.filter(email="ada@acme.com").count(), 1)
+        self.assertRegex(r.data["reference"], r"-0002$")
+        self.assertIsNone(self.link_from_outbox())
+
+    def test_same_company_name_does_not_merge_two_people(self):
+        self.submit()
+        self.submit(email="bob@acme.com", name="Bob Eze")  # same company, different person
+        self.assertEqual(User.objects.filter(email__in=["ada@acme.com", "bob@acme.com"]).count(), 2)
+
+    def test_an_admin_email_never_becomes_a_customer_login(self):
+        self.submit(email="regular@x.com")  # belongs to a staff account
+        customer = RFQ.objects.get().user
+        self.assertNotEqual(customer.pk, self.regular.pk)
+        self.assertFalse(customer.is_staff)
+        self.assertEqual(self.login("regular@x.com", "Regul4r-pass!!").status_code, 200)  # admin login untouched
+
+    def test_missing_fields_are_refused_with_the_field_names(self):
+        r = self.anon.post("/api/rfqs/", {"name": "x"}, format="json")
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("email", r.data["fields"])
+        self.assertEqual(RFQ.objects.count(), 0)
+
+    def test_it_is_recorded_without_naming_a_person(self):
+        self.submit()
+        e = AuditLog.objects.get(action="quote_received")
+        self.assertEqual(e.actor_email, "")
+        self.assertIn("RFQ-", e.target_label)
+
+
+class ChoosingAPassword(TrackBase):
+    def setUp(self):
+        super().setUp()
+        self.submit()
+        self.token = self.link_from_outbox()
+        self.user = User.objects.get(email="ada@acme.com")
+
+    def test_link_sets_a_password_and_signs_in(self):
+        r = self.anon.post("/api/customer/set-password/", {"token": self.token, "password": STRONG}, format="json")
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertIn("token", r.data)
+        self.assertEqual(r.data["user"]["email"], "ada@acme.com")
+        self.assertEqual(self.anon.post("/api/customer/login/", {"email": "ADA@acme.com", "password": STRONG}, format="json").status_code, 200)
+
+    def test_link_works_only_once(self):
+        self.anon.post("/api/customer/set-password/", {"token": self.token, "password": STRONG}, format="json")
+        again = self.anon.post("/api/customer/set-password/", {"token": self.token, "password": STRONG + "x"}, format="json")
+        self.assertEqual(again.status_code, 400)
+
+    def test_weak_password_is_refused_and_link_stays_usable(self):
+        r = self.anon.post("/api/customer/set-password/", {"token": self.token, "password": "12345678"}, format="json")
+        self.assertEqual(r.status_code, 400)
+        self.assertEqual(self.anon.post("/api/customer/set-password/", {"token": self.token, "password": STRONG}, format="json").status_code, 200)
+
+    def test_garbage_and_expired_links_are_refused(self):
+        self.assertEqual(self.anon.post("/api/customer/set-password/", {"token": "nope", "password": STRONG}, format="json").status_code, 400)
+        old = signing.dumps({"uid": str(self.user.pk), "fp": tracking.password_fingerprint(self.user)}, salt=tracking.SET_PASSWORD_SALT)
+        with mock.patch("cms.tracking.SET_PASSWORD_MAX_AGE", -1):
+            r = self.anon.post("/api/customer/set-password/", {"token": old, "password": STRONG}, format="json")
+        self.assertEqual(r.status_code, 400)
+
+    def test_link_cannot_set_an_admin_password(self):
+        forged = signing.dumps({"uid": str(self.regular.pk), "fp": self.regular.password[-16:]}, salt=tracking.SET_PASSWORD_SALT)
+        self.assertEqual(self.anon.post("/api/customer/set-password/", {"token": forged, "password": STRONG}, format="json").status_code, 400)
+
+    def test_cannot_sign_in_before_choosing_a_password(self):
+        self.assertEqual(self.anon.post("/api/customer/login/", {"email": "ada@acme.com", "password": "Acme Supplies"}, format="json").status_code, 401)
+        self.assertEqual(self.anon.post("/api/customer/login/", {"email": "ada@acme.com", "password": ""}, format="json").status_code, 401)
+
+    def test_admins_cannot_sign_in_through_the_customer_door(self):
+        self.assertEqual(self.anon.post("/api/customer/login/", {"email": "regular@x.com", "password": "Regul4r-pass!!"}, format="json").status_code, 401)
+
+    def test_request_link_answers_the_same_for_everyone(self):
+        mail.outbox.clear()
+        known = self.anon.post("/api/customer/request-link/", {"email": "ada@acme.com"}, format="json")
+        sent = len(mail.outbox)
+        unknown = self.anon.post("/api/customer/request-link/", {"email": "nobody@x.com"}, format="json")
+        admin = self.anon.post("/api/customer/request-link/", {"email": "regular@x.com"}, format="json")
+        self.assertEqual((known.status_code, unknown.status_code, admin.status_code), (200, 200, 200))
+        self.assertEqual(known.data, unknown.data)
+        self.assertEqual((sent, len(mail.outbox)), (1, 1))  # only the real customer was emailed
+
+
+class CustomersSeeOnlyTheirOwn(TrackBase):
+    def setUp(self):
+        super().setUp()
+        self.submit()
+        self.submit(email="bob@other.com", name="Bob Eze", item="300 diaries")
+        self.ada = User.objects.get(email="ada@acme.com")
+        self.bob = User.objects.get(email="bob@other.com")
+        self.ada_rfq = RFQ.objects.get(user=self.ada)
+        self.bob_rfq = RFQ.objects.get(user=self.bob)
+
+    def test_list_has_only_their_requests(self):
+        r = customer_client(self.ada).get("/api/customer/requests/")
+        self.assertEqual([x["reference"] for x in r.data], [self.ada_rfq.reference])
+
+    def test_cannot_open_someone_elses_request(self):
+        c = customer_client(self.ada)
+        self.assertEqual(c.get(f"/api/customer/requests/{self.bob_rfq.pk}/").status_code, 404)
+        self.assertEqual(c.get(f"/api/customer/requests/{self.ada_rfq.pk}/").status_code, 200)
+        self.assertEqual(c.get("/api/customer/requests/not-a-uuid/").status_code, 404)
+
+    def test_signed_out_is_refused(self):
+        self.assertEqual(self.anon.get("/api/customer/requests/").status_code, 401)
+        self.assertEqual(self.anon.get(f"/api/customer/requests/{self.ada_rfq.pk}/").status_code, 401)
+
+    def test_a_customer_can_never_use_the_cms(self):
+        c = customer_client(self.ada)
+        for path in ("/api/rfqs/", "/api/audit/", "/api/user/", "/api/admins/", "/api/inbox/", "/api/sent-emails/", "/api/auth/me/"):
+            self.assertIn(c.get(path).status_code, (401, 403), path)
+        self.assertIn(c.post("/api/services/", {"title": "x", "description": "y"}, format="json").status_code, (401, 403))
+        self.assertIn(c.post(f"/api/rfqs/{self.ada_rfq.pk}/updates/", {"stage": "shipped", "headline": "x"}, format="json").status_code, (401, 403))
+        self.assertIn(c.patch(f"/api/rfqs/{self.ada_rfq.pk}/", {"item": "free stuff"}, format="json").status_code, (401, 403))
+
+    def test_an_admin_token_is_not_a_customer_sign_in(self):
+        self.assertEqual(self.super.get("/api/customer/requests/").status_code, 403)
+
+    def test_customer_token_expires_after_a_day(self):
+        token = make_customer_token(self.ada)
+        c = APIClient(); c.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+        with mock.patch("cms.authentication.CUSTOMER_MAX_AGE", -1):
+            self.assertEqual(c.get("/api/customer/requests/").status_code, 401)
+
+    def test_changing_the_password_signs_out_older_sessions(self):
+        c = customer_client(self.ada)
+        self.ada.set_password(STRONG); self.ada.save()
+        self.assertEqual(c.get("/api/customer/requests/").status_code, 401)
+
+    def test_guest_tracking_needs_the_right_pair(self):
+        ok = self.anon.post("/api/customer/track/", {"reference": self.ada_rfq.reference.lower(), "email": "ADA@acme.com"}, format="json")
+        self.assertEqual(ok.status_code, 200)
+        wrong_email = self.anon.post("/api/customer/track/", {"reference": self.ada_rfq.reference, "email": "bob@other.com"}, format="json")
+        unknown = self.anon.post("/api/customer/track/", {"reference": "RFQ-2000-0001", "email": "ada@acme.com"}, format="json")
+        self.assertEqual((wrong_email.status_code, unknown.status_code), (404, 404))
+        self.assertEqual(wrong_email.data, unknown.data)
+        self.assertNotIn("email", ok.data)  # contact details are not echoed
+
+
+class AdminPostsUpdates(TrackBase):
+    def setUp(self):
+        super().setUp()
+        self.submit()
+        self.rfq = RFQ.objects.get()
+        self.url = f"/api/rfqs/{self.rfq.pk}/updates/"
+
+    def post(self, **body):
+        mail.outbox.clear()
+        return self.super.post(self.url, {"stage": "sourcing", "headline": "Supplier confirmed", **body}, format="json")
+
+    def test_update_moves_the_status_and_emails_the_customer(self):
+        r = self.post(details="Pickup in 2 days", location="Guangzhou", estimated_delivery="2026-11-20")
+        self.assertEqual(r.status_code, 201, r.data)
+        self.rfq.refresh_from_db()
+        self.assertEqual((self.rfq.status, str(self.rfq.estimated_delivery)), ("sourcing", "2026-11-20"))
+        self.assertEqual(r.data["step"], 4)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ["ada@acme.com"])
+        self.assertIn("Supplier confirmed", mail.outbox[0].subject)
+        self.assertTrue(RFQUpdate.objects.get(headline="Supplier confirmed").emailed)
+
+    def test_every_update_is_emailed(self):
+        for stage in ("quoted", "confirmed", "sourcing"):
+            self.post(stage=stage, headline=f"went {stage}")
+            self.assertEqual(len(mail.outbox), 1, stage)
+
+    def test_admin_can_choose_not_to_email(self):
+        self.post(notify=False)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_customer_sees_the_update_and_the_stages(self):
+        self.post(stage="quality", headline="Passed inspection")
+        d = customer_client(self.rfq.user).get(f"/api/customer/requests/{self.rfq.pk}/").data
+        self.assertEqual((d["status"], d["step"], d["steps"]), ("quality", 5, 8))
+        self.assertEqual(d["updates"][0]["headline"], "Passed inspection")  # newest first
+        states = {s["key"]: s["state"] for s in d["stages"]}
+        self.assertEqual((states["received"], states["quality"], states["shipped"]), ("done", "current", "todo"))
+
+    def test_delivered_marks_every_stage_done(self):
+        self.post(stage="delivered", headline="Delivered")
+        d = customer_client(self.rfq.user).get(f"/api/customer/requests/{self.rfq.pk}/").data
+        self.assertTrue(all(s["state"] == "done" for s in d["stages"]))
+
+    def test_bad_input_is_refused(self):
+        self.assertEqual(self.post(stage="flying").status_code, 400)
+        self.assertEqual(self.post(headline="").status_code, 400)
+        self.assertEqual(self.post(estimated_delivery="soon").status_code, 400)
+        self.assertEqual(self.post(headline="x" * 201).status_code, 400)
+        self.assertEqual(len(mail.outbox), 0)
+        self.rfq.refresh_from_db()
+        self.assertEqual(self.rfq.status, "received")
+
+    def test_editing_and_deleting_recompute_the_status(self):
+        a = self.post(stage="quoted", headline="Quoted").data["updates"][0]["id"]
+        b = self.post(stage="shipped", headline="Shipped").data["updates"][0]["id"]
+        self.rfq.refresh_from_db(); self.assertEqual(self.rfq.status, "shipped")
+        r = self.super.delete(f"{self.url}{b}/")
+        self.assertEqual(r.status_code, 200)
+        self.rfq.refresh_from_db(); self.assertEqual(self.rfq.status, "quoted")
+        r = self.super.patch(f"{self.url}{a}/", {"headline": "Quotation sent", "details": "Ref GHP-2026-0001"}, format="json")
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data["updates"][0]["headline"], "Quotation sent")
+        self.assertEqual(self.super.patch(f"{self.url}00000000-0000-0000-0000-000000000000/", {"headline": "x"}, format="json").status_code, 404)
+
+    def test_it_is_in_the_activity_log(self):
+        self.post()
+        e = AuditLog.objects.get(action="created", target_type="order update")
+        self.assertEqual(e.actor_email, ADMIN_EMAIL)
+        self.assertIn(self.rfq.reference, e.target_label)
+
+    def test_regular_admins_can_post_too_and_the_public_cannot(self):
+        r = self.regular_client.post(self.url, {"stage": "quoted", "headline": "Quoted"}, format="json")
+        self.assertEqual(r.status_code, 201)
+        self.assertEqual(self.anon.post(self.url, {"stage": "quoted", "headline": "x"}, format="json").status_code, 401)
+
+    def test_reference_cannot_be_edited_from_the_cms(self):
+        before = self.rfq.reference
+        self.super.patch(f"/api/rfqs/{self.rfq.pk}/", {"reference": "RFQ-1999-0001", "status": "delivered", "delivery_address": "12 Marina, Lagos"}, format="json")
+        self.rfq.refresh_from_db()
+        self.assertEqual((self.rfq.reference, self.rfq.status, self.rfq.delivery_address), (before, "received", "12 Marina, Lagos"))
+
+    def test_quotation_reference_comes_from_the_quotation_email(self):
+        from .references import create_sent_email
+        create_sent_email("rfq_reply", recipient="ada@acme.com", subject="Quote", title="Quote", body="x")
+        d = customer_client(self.rfq.user).get(f"/api/customer/requests/{self.rfq.pk}/").data
+        self.assertRegex(d["quotation_reference"], r"^GHP-\d{4}-0001$")
+
+    def test_a_customer_with_requests_still_cannot_be_deleted(self):
+        self.assertEqual(self.super.delete(f"/api/user/{self.rfq.user.pk}/").status_code, 409)
