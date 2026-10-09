@@ -6,7 +6,7 @@ from .serial import InboxListSerial , InboxSerial , AdminCreateSerial , AdminSer
 from rest_framework.views import APIView
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet, ViewSet
 from rest_framework.decorators import action
-from rest_framework.decorators import api_view, authentication_classes, permission_classes
+from rest_framework.decorators import api_view, authentication_classes, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework import status
@@ -397,3 +397,24 @@ class AuditView(ReadOnlyModelViewSet):
         total = qs.count()
         rows = qs[offset: offset + self.PAGE]
         return Response({"total": total, "offset": offset, "results": self.get_serializer(rows, many=True).data})
+
+
+
+@api_view(["GET", "HEAD"])
+@authentication_classes([])
+@permission_classes([AllowAny])
+@throttle_classes([])
+def health(request):
+    """For uptime monitors: public, no sign-in, nothing private in the answer.
+    200 when the site and its database answer, 503 when the database does not."""
+    from django.db import connection
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+        up = True
+    except Exception:  # noqa: BLE001
+        up = False
+    response = Response({"status": "ok" if up else "down"}, status=200 if up else 503)
+    response["Cache-Control"] = "no-store"
+    return response
