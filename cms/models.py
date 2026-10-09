@@ -82,7 +82,8 @@ class FAQ(models.Model):
     
 class RFQ(models.Model):
     id = models.UUIDField(default=uuid4,primary_key=True , editable=False)
-    user = models.ForeignKey(User , related_name="rfqs" , on_delete=models.CASCADE)
+    # PROTECT: deleting an account must never silently wipe its quote requests
+    user = models.ForeignKey(User , related_name="rfqs" , on_delete=models.PROTECT)
     email = models.EmailField(blank=False)
     name = models.CharField(max_length=500 , blank = False) 
     phone = models.CharField(max_length=55 , blank=False , null = True)

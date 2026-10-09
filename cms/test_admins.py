@@ -361,3 +361,56 @@ class LastSignIn(AdminBase):
         self.assertIsNone(User.objects.get(pk=new.pk).last_login)  # password alone is not a sign-in yet
         self.anon.post("/api/auth/login/mfa/", {"mfa_token": step1.data["mfa_token"], "code": pyotp.TOTP(secret).at(time.time())}, format="json")
         self.assertIsNotNone(User.objects.get(pk=new.pk).last_login)
+
+
+class AccountsWithQuoteRequestsAreProtected(AdminBase):
+    """Deleting a customer account used to delete their quote requests too."""
+
+    def rfq(self, user, item="Office chairs"):
+        from .models import RFQ
+        return RFQ.objects.create(user=user, email=user.email, name="Buyer", company="Acme", item=item, file="")
+
+    def test_an_account_with_quote_requests_cannot_be_deleted_from_the_cms(self):
+        self.rfq(self.customer)
+        r = self.super.delete(f"/api/user/{self.customer.pk}/")
+        self.assertEqual(r.status_code, 409)
+        self.assertIn("1 quote request", r.data["detail"])
+        self.assertIn("cannot be deleted", r.data["detail"])
+        self.assertTrue(User.objects.filter(pk=self.customer.pk).exists())
+        self.assertEqual(self.customer.rfqs.count(), 1)  # the request is still there
+
+    def test_the_message_counts_them(self):
+        self.rfq(self.customer)
+        self.rfq(self.customer, "Laptops")
+        r = self.super.delete(f"/api/user/{self.customer.pk}/")
+        self.assertIn("2 quote requests", r.data["detail"])
+
+    def test_an_account_without_quote_requests_is_still_deletable(self):
+        other = mk("lead", "lead@x.com", "Lead-pass-2026")
+        self.assertEqual(self.super.delete(f"/api/user/{other.pk}/").status_code, 204)
+        self.assertFalse(User.objects.filter(pk=other.pk).exists())
+
+    def test_one_customers_requests_do_not_block_another_customer(self):
+        self.rfq(self.customer)
+        other = mk("lead", "lead@x.com", "Lead-pass-2026")
+        self.assertEqual(self.super.delete(f"/api/user/{other.pk}/").status_code, 204)
+        self.assertTrue(User.objects.filter(pk=self.customer.pk).exists())
+
+    def test_the_database_layer_refuses_too_so_the_django_admin_and_shell_cannot_wipe_them(self):
+        from django.db.models import ProtectedError
+        self.rfq(self.customer)
+        with self.assertRaises(ProtectedError):
+            self.customer.delete()
+        with self.assertRaises(ProtectedError):
+            User.objects.filter(pk=self.customer.pk).delete()
+        self.assertEqual(self.customer.rfqs.count(), 1)
+
+    def test_still_admin_only(self):
+        self.rfq(self.customer)
+        self.assertEqual(self.anon.delete(f"/api/user/{self.customer.pk}/").status_code, 401)
+        self.assertEqual(self.client_for(make_token(self.customer)).delete(f"/api/user/{self.customer.pk}/").status_code, 403)
+
+    def test_editing_such_an_account_still_works(self):
+        self.rfq(self.customer)
+        r = self.super.patch(f"/api/user/{self.customer.pk}/", {"first_name": "Renamed"}, format="json")
+        self.assertEqual(r.status_code, 200)

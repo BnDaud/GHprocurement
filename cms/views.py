@@ -23,6 +23,20 @@ class UserView(ModelViewSet):
 
     serializer_class = UserSerial
     queryset = User.objects.filter(is_staff=False, is_superuser=False)
+
+    def destroy(self, request, *args, **kwargs):
+        # Accounts created from the public quote form own their quote requests.
+        # Deleting such an account would delete those requests, so refuse.
+        user = self.get_object()
+        count = user.rfqs.count()
+        if count:
+            plural = "s" if count != 1 else ""
+            return Response(
+                {"detail": f"This account has {count} quote request{plural}, so it cannot be deleted. "
+                           f"The quote request{plural} would be lost."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        return super().destroy(request, *args, **kwargs)
     
    # for i in PortfolioImages.objects.all():
     #    print(i.image.url)
