@@ -113,8 +113,7 @@ class RFQSerial(ModelSerializer):
         return obj.file.url if obj.file else None
 
     def validate(self, attrs):
-        from django.conf import settings
-        if self.instance is None and settings.CUSTOMER_PORTAL_LIVE and attrs.get("consent") is not True:
+        if self.instance is None and attrs.get("consent") is not True:
             raise serializers.ValidationError(
                 {"consent": "Please agree so we can reply and create your account."})
         return attrs

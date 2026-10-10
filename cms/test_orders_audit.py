@@ -1,74 +1,13 @@
-"""The customer portal switch, and what admins see in the CMS."""
+"""What admins see in the CMS and in the audit log for order updates."""
 from unittest import mock
 
 from django.core import mail
-from django.test import override_settings
 
 from .models import AuditLog, RFQ
 from .test_tracking import FORM, TrackBase, customer_client
 
 
-class PortalNotLive(TrackBase):
-    """The new customer site is not live: the live (old) public form must keep working."""
-
-    def setUp(self):
-        super().setUp()
-        p = override_settings(CUSTOMER_PORTAL_LIVE=False)
-        p.enable()
-        self.addCleanup(p.disable)
-
-    def old_form_post(self):
-        body = {k: v for k, v in FORM.items() if k != "consent"}  # the old site never sends consent
-        mail.outbox.clear()
-        return self.anon.post("/api/rfqs/", body, format="json")
-
-    def test_the_old_form_still_works_without_the_agreement_box(self):
-        r = self.old_form_post()
-        self.assertEqual(r.status_code, 200, r.data)
-        self.assertEqual(RFQ.objects.count(), 1)
-
-    def test_the_confirmation_goes_by_postmark_and_never_touches_zoho(self):
-        with mock.patch("cms.task.requests") as zoho:
-            self.old_form_post()
-            zoho.post.assert_not_called()
-            zoho.get.assert_not_called()
-        self.assertEqual(len(mail.outbox), 1)
-        m = mail.outbox[0]
-        self.assertEqual(m.to, ["ada@acme.com"])
-        self.assertRegex(m.subject, r"^We have your request RFQ-\d{4}-[A-Z2-9]{6}$")
-
-    def test_it_has_no_links_to_customer_pages_that_do_not_exist_yet(self):
-        self.old_form_post()
-        html = mail.outbox[0].alternatives[0][0]
-        for gone in ("set-password", "/account", "Choose my password", "Track my request", "followed on your account"):
-            self.assertNotIn(gone, html, gone)
-        self.assertIn("We have your request, Ada.", html)
-        self.assertIn("Quotation within", html)
-        self.assertIn("We source, check and ship", html)
-
-    def test_the_account_is_still_made_safely(self):
-        self.old_form_post()
-        user = RFQ.objects.get().user
-        self.assertFalse(user.has_usable_password())  # never the company name again
-
-    def test_progress_updates_are_saved_but_the_customer_is_not_emailed(self):
-        self.old_form_post()
-        rfq = RFQ.objects.get()
-        mail.outbox.clear()
-        r = self.super.post(f"/api/rfqs/{rfq.pk}/updates/", {"stage": "sourcing", "headline": "Supplier confirmed", "notify": True}, format="json")
-        self.assertEqual(r.status_code, 201)
-        self.assertIs(r.data["emailed"], False)
-        self.assertEqual(len(mail.outbox), 0)
-        self.assertIn("customer not emailed", AuditLog.objects.get(target_type="order update").detail)
-
-    def test_the_cms_is_told_the_portal_is_off(self):
-        self.assertIs(self.super.get("/api/auth/me/").data["customer_portal"], False)
-
-
-class PortalLive(TrackBase):
-    def test_the_cms_is_told_the_portal_is_on(self):
-        self.assertIs(self.super.get("/api/auth/me/").data["customer_portal"], True)
-
+class OrderUpdates(TrackBase):
     def test_audit_says_who_moved_which_order_from_what_to_what(self):
         self.submit()
         rfq = RFQ.objects.get()

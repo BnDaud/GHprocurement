@@ -448,3 +448,18 @@ class RandomReferences(TrackBase):
         RFQ.objects.filter(pk=rfq.pk).update(reference="RFQ-2026-0001")
         r = self.anon.post("/api/customer/track/", {"reference": "rfq-2026-0001", "email": "ada@acme.com"}, format="json")
         self.assertEqual(r.status_code, 200)
+
+
+class EmailLinksHaveNoHash(TrackBase):
+    def test_links_are_plain_addresses(self):
+        self.submit()
+        html = mail.outbox[-1].alternatives[0][0]
+        self.assertNotIn("/#/", html)
+        self.assertRegex(html, r"https?://[^\"']+/set-password\?token=")
+        rfq = RFQ.objects.get()
+        mail.outbox.clear()
+        self.super.post(f"/api/rfqs/{rfq.pk}/updates/", {"stage": "quoted", "headline": "Quoted"}, format="json")
+        update = mail.outbox[-1].alternatives[0][0]
+        self.assertNotIn("/#/", update)
+        self.assertIn(f"/account/{rfq.pk}", update)
+        self.assertEqual(len(mail.outbox), 1)  # emailed automatically, no checkbox needed

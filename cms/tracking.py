@@ -210,37 +210,21 @@ NEXT_STEPS = [
     ("You confirm", "We start sourcing for you."),
     ("You follow it home", "Each step shows on your account until delivery."),
 ]
-# before the customer pages are live there is no account to follow it on
-NEXT_STEPS_SIMPLE = [
-    ("We send your quotation", "A formal quotation by email."),
-    ("You confirm", "We start sourcing for you."),
-    ("We source, check and ship", "Then it is on its way to you."),
-]
-
-
 def email_request_received(rfq_id, new_account):
-    """Sent right after a request. Once the customer site is live it carries the reference and the link to
-    choose a password (or to track); until then it is a plain confirmation with no links to pages that
-    do not exist yet."""
-    from django.conf import settings
-
+    """Sent right after a request: its reference, and (new account) the link to choose a password, or (known
+    customer) the link to track it."""
     from .references import format_date
 
     try:
         rfq = RFQ.objects.select_related("user").get(pk=rfq_id)
         user = rfq.user
-        portal = settings.CUSTOMER_PORTAL_LIVE
         details = [("Request", short_title(rfq)), ("Company", rfq.company),
                    ("Received", format_date(rfq.created_at)), ("Quotation within", "48 hours")]
-        common = dict(label="Request receipt", reference=rfq.reference, details=details,
-                      steps=NEXT_STEPS if portal else NEXT_STEPS_SIMPLE)
+        common = dict(label="Request receipt", reference=rfq.reference, details=details, steps=NEXT_STEPS)
         title = f"We have your request, {_first_name(rfq)}."
         thanks = "Thank you. We received your request and will send your quotation within 48 hours."
-        if not portal:
-            _send(rfq.email, f"We have your request {rfq.reference}", title,
-                  [thanks, "Please quote the reference above if you write to us about this request."], **common)
-        elif new_account and user.email.lower() == rfq.email.lower():
-            link = f"{site_url()}/#/set-password?token={make_set_password_token(user)}"
+        if new_account and user.email.lower() == rfq.email.lower():
+            link = f"{site_url()}/set-password?token={make_set_password_token(user)}"
             _send(rfq.email, f"We have your request {rfq.reference}", title,
                   [thanks, "We made you an account so you can follow it, step by step. Choose your password (the link works for 24 hours):"],
                   "Choose my password", link,
@@ -248,7 +232,7 @@ def email_request_received(rfq_id, new_account):
         else:
             _send(rfq.email, f"We have your request {rfq.reference}", title,
                   [thanks, "Sign in to follow it, step by step."],
-                  "Track my request", f"{site_url()}/#/account/{rfq.pk}", "", **common)
+                  "Track my request", f"{site_url()}/account/{rfq.pk}", "", **common)
     except Exception:  # noqa: BLE001
         logger.exception("could not send the request-received email for %s", rfq_id)
 
@@ -257,7 +241,7 @@ def email_password_link(user_id):
     """For 'send me the link again' and 'forgot password'."""
     try:
         user = User.objects.get(pk=user_id)
-        link = f"{site_url()}/#/set-password?token={make_set_password_token(user)}"
+        link = f"{site_url()}/set-password?token={make_set_password_token(user)}"
         _send(user.email, "Choose your password", "Choose your password",
               [f"Hello {_first_name(user)},", "Use the button below to choose a password for your GH Procurement account. The link works once and expires after 24 hours."],
               "Choose my password", link, "If you did not ask for this, ignore this email. Your account is unchanged.",
@@ -280,7 +264,7 @@ def email_update(update_id):
         if rfq.estimated_delivery:
             details.append(("Estimated delivery", f"{rfq.estimated_delivery.day} {rfq.estimated_delivery:%B %Y}"))
         _send(rfq.email, f"{rfq.reference}: {update.headline}", update.headline, paragraphs, "See my order",
-              f"{site_url()}/#/account/{rfq.pk}", "", details, label="Progress update", reference=rfq.reference)
+              f"{site_url()}/account/{rfq.pk}", "", details, label="Progress update", reference=rfq.reference)
         RFQUpdate.objects.filter(pk=update.pk).update(emailed=True)
     except Exception:  # noqa: BLE001
         logger.exception("could not send the update email for %s", update_id)

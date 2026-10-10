@@ -149,8 +149,7 @@ class RFQView(AuditedMixin, ModelViewSet):
         notify = d.get("notify", True)
         if isinstance(notify, str):
             notify = notify.lower() in ("1", "true", "yes", "on")
-        # customers are only emailed once the customer site (the pages the email links to) is live
-        emailed = bool(notify and settings.CUSTOMER_PORTAL_LIVE)
+        emailed = bool(notify)  # the CMS always sends it: the customer is emailed on every update
         moved = tracking.STAGE_LABELS.get(before) != tracking.STAGE_LABELS.get(update.stage)
         what = (f"moved from {tracking.STAGE_LABELS.get(before)} to {tracking.STAGE_LABELS.get(update.stage)}" if moved
                 else f"note at {tracking.STAGE_LABELS.get(update.stage)}")

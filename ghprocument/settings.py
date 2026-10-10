@@ -186,11 +186,6 @@ CMS_SUPER_ADMIN_EMAILS = [
 POSTMARK_INBOUND_SECRET = os.getenv("POSTMARK_INBOUND_SECRET", "")
 # where the customer-facing site lives (links in customer emails point here)
 PUBLIC_SITE_URL = os.getenv("PUBLIC_SITE_URL", "https://www.ghprocurement.com")
-# The customer portal (customer sign-in, tracking pages, and the emails that link to them)
-# only exists on the new public site. Until that site is live this stays off: new quote
-# requests get the old confirmation email, and progress updates are not emailed.
-# Turn on with CUSTOMER_PORTAL_LIVE=1 in the server's environment.
-CUSTOMER_PORTAL_LIVE = os.getenv("CUSTOMER_PORTAL_LIVE", "").strip().lower() in ("1", "true", "yes")
 
 REST_FRAMEWORK = {
     # secure by default: a view is admin-only unless it says otherwise

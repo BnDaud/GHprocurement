@@ -133,9 +133,7 @@ class MeView(APIView):
 
     def get(self, request):
         device = mfa.get_device(request.user)
-        from django.conf import settings
-        return Response({**_user_payload(request.user), "recovery_codes_left": len(device.recovery_hashes) if device else 0,
-                         "customer_portal": settings.CUSTOMER_PORTAL_LIVE})
+        return Response({**_user_payload(request.user), "recovery_codes_left": len(device.recovery_hashes) if device else 0})
 
 
 class ChangePasswordView(APIView):
