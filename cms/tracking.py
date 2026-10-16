@@ -170,27 +170,37 @@ def site_url():
     return getattr(settings, "PUBLIC_SITE_URL", "https://www.ghprocurement.com").rstrip("/")
 
 
-def _send(to, subject, title, paragraphs, button_label="", button_url="", note="", details=None,
-          label="", reference="", steps=None):
-    from .task import LOGO_CID, LOGO_FALLBACK_URL, LOGO_PATH, company_info
-
-    logo = None
+def _white_logo():
+    from .task import LOGO_PATH
     try:
         # the white logo: these emails have a dark header
         with open(LOGO_PATH.replace("email-logo.png", "email-logo-white.png"), "rb") as fh:
-            logo = fh.read()
+            return fh.read()
     except OSError:
-        pass
-    info = company_info()
+        return None
+
+
+def _html(title, paragraphs, button_label, button_url, note, details, label, reference, steps, logo_cid, logo_url):
+    from .task import company_info
+
     context = {
         "title": title, "paragraphs": paragraphs, "button_label": button_label, "button_url": button_url,
         "note": note, "details": details or [], "label": label, "reference": reference, "steps": steps or [],
         "preheader": paragraphs[0][:110] if paragraphs else title,
         "header_image": getattr(settings, "EMAIL_HEADER_IMAGE", "https://cms.ghprocurement.com/email/header.jpg"),
-        "logo_cid": LOGO_CID if logo else "", "logo_url": LOGO_FALLBACK_URL,
-        "year": datetime.now().year, **info,
+        "logo_cid": logo_cid, "logo_url": logo_url,
+        "year": datetime.now().year, **company_info(),
     }
-    html = render_to_string("email_customer.html", context)
+    return render_to_string("email_customer.html", context)
+
+
+def _send(to, subject, title, paragraphs, button_label="", button_url="", note="", details=None,
+          label="", reference="", steps=None):
+    from .task import LOGO_CID, LOGO_FALLBACK_URL
+
+    logo = _white_logo()
+    html = _html(title, paragraphs, button_label, button_url, note, details, label, reference, steps,
+                 LOGO_CID if logo else "", LOGO_FALLBACK_URL)
     lines = [title, ""] + ([f"Reference: {reference}", ""] if reference else []) + paragraphs + [""]
     lines += [f"{k}: {v}" for k, v in (details or [])]
     if steps:
@@ -261,24 +271,62 @@ def email_password_link(user_id):
         logger.exception("could not send the password link to %s", user_id)
 
 
+def _update_parts(update):
+    """What an update email says (shared by the sending and by the customer's 'see what we sent' view)."""
+    rfq = update.rfq
+    paragraphs = [f"Hello {_first_name(rfq)}, there is an update on your request."]
+    if update.details:
+        paragraphs.append(update.details)
+    details = [("Request", short_title(rfq)), ("Stage", f"{STAGE_LABELS.get(update.stage, update.stage)} (step {step_of(update.stage)} of {len(STAGE_ORDER)})")]
+    if update.location:
+        details.append(("Where", update.location))
+    if rfq.estimated_delivery:
+        details.append(("Estimated delivery", f"{rfq.estimated_delivery.day} {rfq.estimated_delivery:%B %Y}"))
+    return dict(subject=f"{rfq.reference}: {update.headline}", title=update.headline, paragraphs=paragraphs,
+                button_label="See my order", button_url=f"{site_url()}/account/{rfq.pk}", note="", details=details,
+                label="Progress update", reference=rfq.reference, steps=None)
+
+
 def email_update(update_id):
     """Every progress update is emailed to the customer."""
     try:
         update = RFQUpdate.objects.select_related("rfq").get(pk=update_id)
-        rfq = update.rfq
-        paragraphs = [f"Hello {_first_name(rfq)}, there is an update on your request."]
-        if update.details:
-            paragraphs.append(update.details)
-        details = [("Request", short_title(rfq)), ("Stage", f"{STAGE_LABELS.get(update.stage, update.stage)} (step {step_of(update.stage)} of {len(STAGE_ORDER)})")]
-        if update.location:
-            details.append(("Where", update.location))
-        if rfq.estimated_delivery:
-            details.append(("Estimated delivery", f"{rfq.estimated_delivery.day} {rfq.estimated_delivery:%B %Y}"))
-        _send(rfq.email, f"{rfq.reference}: {update.headline}", update.headline, paragraphs, "See my order",
-              f"{site_url()}/account/{rfq.pk}", "", details, label="Progress update", reference=rfq.reference)
+        p = _update_parts(update)
+        _send(update.rfq.email, p["subject"], p["title"], p["paragraphs"], p["button_label"], p["button_url"], p["note"],
+              p["details"], label=p["label"], reference=p["reference"])
         RFQUpdate.objects.filter(pk=update.pk).update(emailed=True)
     except Exception:  # noqa: BLE001
         logger.exception("could not send the update email for %s", update_id)
+
+
+def render_update_email(update):
+    """The email the customer got for this update, as HTML (for the tracking page). The first update shows the
+    receipt without its password link (that link is private and single-use); a quotation shows the quotation."""
+    import base64
+    import re
+    from .models import SentEmail
+    from .references import format_date
+    from .task import LOGO_FALLBACK_URL, render_sent_html
+
+    rfq = update.rfq
+    m = re.search(r"GHP-\d{4}-[A-Z0-9]+", update.headline or "")
+    if m:
+        record = SentEmail.objects.filter(rfq=rfq, reference=m.group(0)).exclude(status="draft").first()
+        if record:
+            return render_sent_html(record)
+    logo = _white_logo()
+    logo_url = "data:image/png;base64," + base64.b64encode(logo).decode() if logo else LOGO_FALLBACK_URL
+    first = rfq.updates.order_by("created_at").first()
+    if first and first.pk == update.pk and update.stage == RFQStage.RECEIVED:
+        details = [("Request", short_title(rfq)), ("Company", rfq.company),
+                   ("Received", format_date(rfq.created_at)), ("Quotation within", "48 hours")]
+        return _html(f"We have your request, {_first_name(rfq)}.",
+                     ["Thank you. We received your request and will send your quotation within 48 hours.",
+                      "Sign in to follow it, step by step."], "Track my request", f"{site_url()}/account/{rfq.pk}", "",
+                     details, "Request receipt", rfq.reference, NEXT_STEPS, "", logo_url)
+    p = _update_parts(update)
+    return _html(p["title"], p["paragraphs"], p["button_label"], p["button_url"], p["note"], p["details"], p["label"],
+                 p["reference"], p["steps"], "", logo_url)
 
 
 def in_background(fn, *args):

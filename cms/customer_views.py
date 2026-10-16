@@ -129,6 +129,22 @@ class CustomerRequestDetailView(APIView):
         return Response(tracking.request_detail(rfq))
 
 
+class CustomerUpdateEmailView(APIView):
+    """The email that went with one progress update, so the customer can read it without opening their inbox."""
+    permission_classes = [IsCustomer]
+
+    def get(self, request, pk, update_id):
+        from django.http import HttpResponse
+        try:
+            rfq = RFQ.objects.filter(user=request.user, pk=uuid.UUID(str(pk))).first()
+            update = rfq.updates.filter(pk=uuid.UUID(str(update_id))).select_related("rfq").first() if rfq else None
+        except ValueError:
+            update = None
+        if update is None:
+            return _bad("Update not found.", status.HTTP_404_NOT_FOUND)
+        return HttpResponse(tracking.render_update_email(update), content_type="text/html; charset=utf-8")
+
+
 class GuestTrackView(_Public):
     """Track with the reference and the email used for the request (no sign-in).
     A wrong pair always gets the same answer."""
@@ -143,3 +159,23 @@ class GuestTrackView(_Public):
         if rfq is None:
             return _bad("We could not find a request with that reference and email.", status.HTTP_404_NOT_FOUND)
         return Response(tracking.request_detail(rfq))
+
+
+class GuestUpdateEmailView(_Public):
+    """Same, for someone tracking with the reference and email (no sign-in)."""
+
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "login"
+
+    def post(self, request):
+        from django.http import HttpResponse
+        reference = str(request.data.get("reference", "")).strip().upper()
+        email = str(request.data.get("email", "")).strip()
+        rfq = RFQ.objects.filter(reference=reference, email__iexact=email).first() if reference and email else None
+        try:
+            update = rfq.updates.filter(pk=uuid.UUID(str(request.data.get("update", "")))).select_related("rfq").first() if rfq else None
+        except ValueError:
+            update = None
+        if update is None:
+            return _bad("We could not find that update.", status.HTTP_404_NOT_FOUND)
+        return HttpResponse(tracking.render_update_email(update), content_type="text/html; charset=utf-8")
