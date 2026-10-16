@@ -171,6 +171,42 @@ def _looks_like(ext, head):
     return False
 
 
+def quote_limit():
+    from .quote import MAX_ROWS
+    return MAX_ROWS
+
+
+MAX_ITEM_IMAGE = 8 * 1024 * 1024
+
+
+def _thumbnail(f):
+    """A small, safe JPEG of an item picture. Anything that is not a real photo is refused."""
+    import io
+    from PIL import Image, ImageOps, UnidentifiedImageError
+
+    ext = os.path.splitext(f.name)[1].lower()
+    if ext not in (".jpg", ".jpeg", ".png", ".webp"):
+        raise ValidationError(f"{f.name}: pictures must be JPG, PNG or WEBP.")
+    if f.size > MAX_ITEM_IMAGE:
+        raise ValidationError(f"{f.name} is too large (max {MAX_ITEM_IMAGE // (1024 * 1024)} MB each).")
+    try:
+        img = Image.open(f)
+        img.verify()
+        f.seek(0)
+        img = ImageOps.exif_transpose(Image.open(f))
+        if img.width * img.height > 40_000_000:
+            raise ValidationError(f"{f.name} is too large in pixels.")
+        img = img.convert("RGBA")
+        flat = Image.new("RGB", img.size, (255, 255, 255))
+        flat.paste(img, mask=img.split()[3])
+        flat.thumbnail((240, 240))
+    except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError):
+        raise ValidationError(f"{f.name} is not a valid picture.")
+    out = io.BytesIO()
+    flat.save(out, "JPEG", quality=82, optimize=True)
+    return out.getvalue()
+
+
 class EmailSerial(Serializer):
     body = CharField(max_length = 5000 , required = True)
     subject = CharField(max_length = 200 , required = True)
@@ -187,8 +223,18 @@ class EmailSerial(Serializer):
     currency = CharField(max_length=3, required=False, allow_blank=True, default="")
     shipping = CharField(required=False, allow_blank=True, default="")
     vat_percent = CharField(required=False, allow_blank=True, default="")
+    # optional pictures of the items: row N points at one of these by position
+    item_images = ListField(child=FileField(), required=False, allow_empty=True)
     # the order (quote request) this quotation is for
     rfq = UUIDField(required=False, allow_null=True, default=None)
+
+    def validate_item_images(self, files):
+        if len(files) > quote_limit():
+            raise ValidationError("Too many item pictures.")
+        thumbs = []
+        for f in files:
+            thumbs.append(_thumbnail(f))
+        return thumbs
 
     def validate_currency(self, value):
         value = value.strip().upper()
@@ -209,7 +255,13 @@ class EmailSerial(Serializer):
         if (shipping or vat) and not rows:
             raise ValidationError({"items": "Add at least one row to the price table, or clear delivery and VAT."})
         currency = attrs.get("currency") or (MetaData.objects.values_list("currency", flat=True).first() or "USD")
+        thumbs = attrs.get("item_images") or []
+        for n, r in enumerate(rows, 1):
+            if r["image"] is not None and r["image"] >= len(thumbs):
+                raise ValidationError({"items": f"Row {n}: its picture is missing."})
         attrs["quote"] = quote.build(rows, currency, shipping, vat)
+        # row position -> thumbnail bytes (shown inside the table, never listed as an attachment)
+        attrs["item_thumbs"] = {n: thumbs[r["image"]] for n, r in enumerate(rows) if r["image"] is not None}
         if attrs.get("rfq"):
             from .models import RFQ
             found = RFQ.objects.filter(pk=attrs["rfq"]).first()

@@ -51,7 +51,13 @@ def parse_items(raw):
             raise ValidationError(f"Row {i}: describe the item.")
         if len(description) > 200:
             raise ValidationError(f"Row {i}: keep the description under 200 characters.")
+        image = row.get("image")
+        if image in ("", None, -1):
+            image = None
+        elif not isinstance(image, int) or isinstance(image, bool) or image < 0:
+            raise ValidationError(f"Row {i}: the picture could not be read.")
         clean.append({
+            "image": image,
             "description": description,
             "quantity": _dec(row.get("quantity"), f"Row {i} quantity", Decimal("0.001"), Decimal(1_000_000), places=3),
             "unit_price": _dec(row.get("unit_price"), f"Row {i} unit price", Decimal(0), Decimal(1_000_000_000)),
@@ -69,6 +75,7 @@ def build(rows, currency, shipping=None, vat_percent=None):
         subtotal += line
         qty = f"{r['quantity'].normalize():f}"
         out_rows.append({
+            "has_image": r.get("image") is not None,
             "description": r["description"], "quantity": qty,
             "unit_price": str(r["unit_price"]), "unit_price_text": money(r["unit_price"], currency),
             "line_total": str(line), "line_total_text": money(line, currency),

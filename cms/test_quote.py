@@ -84,6 +84,41 @@ class SendingQuotes(TrackBase):
         self.assertIn("TOTAL: ₦1,427,065.19", mail.outbox[0].body)  # the plain-text version too
         self.assertIn("email/header.jpg", h)
 
+    def _png(self, name="chair.png", size=(900, 600)):
+        import io
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from PIL import Image
+        buf = io.BytesIO()
+        Image.new("RGB", size, (200, 30, 30)).save(buf, "PNG")
+        return SimpleUploadedFile(name, buf.getvalue(), content_type="image/png")
+
+    def test_an_item_picture_sits_inside_the_table_not_in_the_attachments(self):
+        rows = [dict(ROWS[0], image=0), ROWS[1]]
+        r = self.send(items=json.dumps(rows), item_images=[self._png()])
+        self.assertEqual(r.status_code, 200, r.data)
+        m = mail.outbox[0]
+        h = m.alternatives[0][0]
+        self.assertEqual(h.count('src="cid:item0"'), 1)
+        self.assertNotIn("cid:item1", h)
+        cids = [p["Content-ID"] for p in m.attachments if hasattr(p, "get") and p.get("Content-ID")]
+        self.assertIn("<item0>", cids)
+        self.assertNotIn("chair.png", m.body)  # not listed as an attachment
+        self.assertTrue(SentEmail.objects.latest("created_at").quote["rows"][0]["has_image"])
+
+    def test_pictures_are_optional(self):
+        r = self.send()
+        self.assertEqual(r.status_code, 200)
+        self.assertNotIn("cid:item", mail.outbox[0].alternatives[0][0])
+
+    def test_a_missing_or_fake_picture_stops_the_send(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        r = self.send(items=json.dumps([dict(ROWS[0], image=3)]), item_images=[self._png()])
+        self.assertEqual(r.status_code, 400)
+        fake = SimpleUploadedFile("x.png", b"not an image", content_type="image/png")
+        r = self.send(items=json.dumps([dict(ROWS[0], image=0)]), item_images=[fake])
+        self.assertEqual(r.status_code, 400)
+        self.assertEqual(len(mail.outbox), 0)
+
     def test_the_sent_record_keeps_the_table_and_total(self):
         self.send()
         rec = SentEmail.objects.get()

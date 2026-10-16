@@ -111,6 +111,13 @@ def build_email(data):
     else:
         context["button_label"] = "Reply to this email"
         context["button_url"] = f"mailto:{info['contact_email']}?subject=Re%3A%20{quote(data['subject'], safe='')}"
+    thumbs = data.get("item_thumbs") or {}
+    if thumbs and context["quote"].get("rows"):
+        rows = [dict(r) for r in context["quote"]["rows"]]
+        for n in thumbs:
+            if n < len(rows):
+                rows[n]["image_cid"] = f"item{n}"
+        context["quote"] = {**context["quote"], "rows": rows}
     html_content = render_to_string("email_mail.html", context)
 
     text_lines = []
@@ -151,6 +158,13 @@ def build_email(data):
         logo.add_header("Content-ID", f"<{LOGO_CID}>")
         logo.add_header("Content-Disposition", "inline", filename="logo.png")
         email.attach(logo)
+
+    # item pictures sit inside the price table (inline), not in the attachment list
+    for n, blob in thumbs.items():
+        pic = MIMEImage(blob, _subtype="jpeg")
+        pic.add_header("Content-ID", f"<item{n}>")
+        pic.add_header("Content-Disposition", "inline", filename=f"item{n}.jpg")
+        email.attach(pic)
 
     # attachments are DICTS (by design)
     for file in attachments:
