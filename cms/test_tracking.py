@@ -292,7 +292,7 @@ class AdminPostsUpdates(TrackBase):
         from .references import create_sent_email
         create_sent_email("rfq_reply", recipient="ada@acme.com", subject="Quote", title="Quote", body="x")
         d = customer_client(self.rfq.user).get(f"/api/customer/requests/{self.rfq.pk}/").data
-        self.assertRegex(d["quotation_reference"], r"^GHP-\d{4}-0001$")
+        self.assertRegex(d["quotation_reference"], r"^GHP-\d{4}-[A-Z2-9]{6}$")
 
     def test_a_customer_with_requests_still_cannot_be_deleted(self):
         self.assertEqual(self.super.delete(f"/api/user/{self.rfq.user.pk}/").status_code, 409)

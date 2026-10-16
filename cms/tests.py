@@ -343,54 +343,30 @@ def _rec(kind="rfq_reply", **kw):
 
 
 class ReferenceNumbers(TestCase):
-    def test_rfq_replies_get_sequential_references(self):
+    def test_rfq_replies_get_random_references(self):
+        import re
         year = _dt.datetime.now(LAGOS).year
-        refs = [_rec().reference for _ in range(3)]
-        self.assertEqual(refs, [f"GHP-{year}-0001", f"GHP-{year}-0002", f"GHP-{year}-0003"])
+        refs = [_rec().reference for _ in range(5)]
+        for r in refs:
+            self.assertRegex(r, rf"^GHP-{year}-[A-Z2-9]{{6}}$")
+        self.assertEqual(len(set(refs)), 5)
 
-    def test_outreach_gets_no_reference_and_does_not_use_up_numbers(self):
-        year = _dt.datetime.now(LAGOS).year
+    def test_outreach_gets_no_reference(self):
         self.assertIsNone(_rec("outreach").reference)
-        _rec("outreach")
-        self.assertEqual(_rec().reference, f"GHP-{year}-0001")
 
-    def test_numbering_restarts_each_year(self):
-        with mock.patch("cms.references.lagos_now", return_value=_dt.datetime(2027, 1, 2, tzinfo=LAGOS)):
-            a = _rec().reference
-            b = _rec().reference
-        self.assertEqual((a, b), ("GHP-2027-0001", "GHP-2027-0002"))
+    def test_reference_uses_the_current_year(self):
         with mock.patch("cms.references.lagos_now", return_value=_dt.datetime(2028, 6, 1, tzinfo=LAGOS)):
-            self.assertEqual(_rec().reference, "GHP-2028-0001")
+            self.assertTrue(_rec().reference.startswith("GHP-2028-"))
 
-    def test_five_digit_numbers_keep_counting(self):
+    def test_collision_is_retried_with_another_code(self):
         year = _dt.datetime.now(LAGOS).year
-        SentEmail.objects.create(kind="rfq_reply", recipient="a@b.com", subject="S", reference=f"GHP-{year}-9999",
-                                 reference_year=year, reference_number=9999)
-        self.assertEqual(_rec().reference, f"GHP-{year}-10000")
-
-    def test_database_refuses_a_duplicate_number(self):
-        r = _rec()
-        with self.assertRaises(IntegrityError):
-            SentEmail.objects.create(kind="rfq_reply", recipient="x@y.com", subject="S",
-                                     reference="GHP-OTHER", reference_year=r.reference_year, reference_number=r.reference_number)
-
-    def test_collision_is_retried_with_the_next_number(self):
-        # another request already took 0001 but this one read a stale "last number = 0"
-        from django.db.models.query import QuerySet
-        year = _dt.datetime.now(LAGOS).year
-        SentEmail.objects.create(kind="rfq_reply", recipient="z@z.com", subject="other", reference=f"GHP-{year}-0001",
-                                 reference_year=year, reference_number=1)
-        real = QuerySet.aggregate
-        calls = {"n": 0}
-
-        def stale_once(self, *a, **kw):
-            calls["n"] += 1
-            return {"m": 0} if calls["n"] == 1 else real(self, *a, **kw)
-
-        with mock.patch.object(QuerySet, "aggregate", stale_once):
+        SentEmail.objects.create(kind="rfq_reply", recipient="z@z.com", subject="other",
+                                 reference=f"GHP-{year}-AAAAAA", reference_year=year)
+        codes = iter("AAAAAA" + "BBBBBB")
+        with mock.patch("secrets.choice", lambda alphabet: next(codes)):
             r = _rec()
-        self.assertEqual(r.reference, f"GHP-{year}-0002")
-        self.assertEqual(calls["n"], 2)
+        self.assertEqual(r.reference, f"GHP-{year}-BBBBBB")
+
 
 
 class TemplatesByKind(TestCase):
@@ -477,7 +453,7 @@ class SendFlow(AuthTestBase):
         with self.run_inline(), self.send_patch() as send:
             r = self.post(c, kind="rfq_reply", recipient_name="Sulaimon", valid_days="30")
         self.assertEqual(r.status_code, 200)
-        self.assertRegex(r.data["reference"], r"^GHP-\d{4}-0001$")
+        self.assertRegex(r.data["reference"], r"^GHP-\d{4}-[A-Z2-9]{6}$")
         rec = SentEmail.objects.get()
         self.assertEqual((rec.kind, rec.reference, rec.recipient, rec.recipient_name, rec.valid_days), ("rfq_reply", r.data["reference"], "buyer@acme.com", "Sulaimon", 30))
         self.assertEqual(rec.status, "sent")
@@ -507,12 +483,12 @@ class SendFlow(AuthTestBase):
         self.assertEqual(rec.status, "failed")
         self.assertIn("provider down", rec.error)
 
-    def test_references_increase_across_sends(self):
+    def test_references_differ_across_sends(self):
         c = self.client_for(self.login().data["token"])
         with self.run_inline(), self.send_patch():
             a = self.post(c, kind="rfq_reply").data["reference"]
             b = self.post(c, kind="rfq_reply").data["reference"]
-        self.assertTrue(a.endswith("0001") and b.endswith("0002"))
+        self.assertNotEqual(a, b)
 
     def test_bad_input_creates_no_record(self):
         c = self.client_for(self.login().data["token"])
@@ -578,7 +554,7 @@ class SentMailHistory(SendFlow):
         self.assertEqual([row["subject"] for row in r.data], ["second", "first"])
         self.assertNotIn("body", r.data[0])
         self.assertEqual(r.data[0]["recipient"], "buyer@acme.com")
-        self.assertRegex(r.data[0]["reference"], r"^GHP-\d{4}-0002$")
+        self.assertRegex(r.data[0]["reference"], r"^GHP-\d{4}-[A-Z2-9]{6}$")
 
     def test_detail_has_the_full_text_and_attachment_names(self):
         c = self.admin_client()

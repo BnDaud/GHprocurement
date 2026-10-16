@@ -146,7 +146,7 @@ class SendingQuotes(TrackBase):
         from .test_tracking import customer_client
         self.send(rfq=str(self.rfq.pk))
         d = customer_client(self.rfq.user).get(f"/api/customer/requests/{self.rfq.pk}/").data
-        self.assertRegex(d["quotation_reference"], r"^GHP-\d{4}-\d{4}$")
+        self.assertRegex(d["quotation_reference"], r"^GHP-\d{4}-[A-Z2-9]{6}$")
         self.assertEqual(d["status"], "quoted")
 
     def test_a_later_quotation_never_moves_the_order_backwards(self):
