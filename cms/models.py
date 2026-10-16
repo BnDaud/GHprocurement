@@ -185,6 +185,7 @@ class SentEmail(models.Model):
         RFQ_REPLY = "rfq_reply", "Reply to a quote request"
 
     class Status(models.TextChoices):
+        DRAFT = "draft", "Draft"
         QUEUED = "queued", "Queued"
         SENT = "sent", "Sent"
         FAILED = "failed", "Failed"
@@ -194,9 +195,9 @@ class SentEmail(models.Model):
     reference = models.CharField(max_length=30, unique=True, null=True, blank=True)
     reference_year = models.PositiveSmallIntegerField(null=True, blank=True)
     reference_number = models.PositiveIntegerField(null=True, blank=True)
-    recipient = models.EmailField()
+    recipient = models.EmailField(blank=True)  # a draft may not have one yet
     recipient_name = models.CharField(max_length=200, blank=True)
-    subject = models.CharField(max_length=200)
+    subject = models.CharField(max_length=200, blank=True)
     title = models.CharField(max_length=200, blank=True)
     body = models.TextField(blank=True)
     valid_days = models.PositiveSmallIntegerField(null=True, blank=True)
@@ -207,6 +208,8 @@ class SentEmail(models.Model):
     quote = models.JSONField(default=dict, blank=True)
     # the order this was sent for, when it was sent from the Orders page
     rfq = models.ForeignKey("RFQ", null=True, blank=True, on_delete=models.SET_NULL, related_name="sent_emails")
+    # a saved draft: the form exactly as it was left (price rows as typed, currency, delivery, VAT)
+    draft = models.JSONField(default=dict, blank=True)
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.QUEUED)
     error = models.TextField(blank=True)
     provider_message_id = models.CharField(max_length=100, blank=True)

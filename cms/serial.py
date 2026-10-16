@@ -227,6 +227,8 @@ class EmailSerial(Serializer):
     item_images = ListField(child=FileField(), required=False, allow_empty=True)
     # the order (quote request) this quotation is for
     rfq = UUIDField(required=False, allow_null=True, default=None)
+    # sending a saved draft: the draft is removed once the email is on its way
+    draft_id = UUIDField(required=False, allow_null=True, default=None)
 
     def validate_item_images(self, files):
         if len(files) > quote_limit():
@@ -312,6 +314,49 @@ class EmailSerial(Serializer):
         return files
 
 
+class DraftSerial(Serializer):
+    """A draft is allowed to be unfinished: only the shape and sizes are checked, nothing is required."""
+    kind = ChoiceField(choices=["outreach", "rfq_reply"], required=False, default="outreach")
+    recipient = CharField(max_length=254, required=False, allow_blank=True, default="")
+    recipient_name = CharField(max_length=200, required=False, allow_blank=True, default="")
+    subject = CharField(max_length=200, required=False, allow_blank=True, default="")
+    title = CharField(max_length=200, required=False, allow_blank=True, default="")
+    body = CharField(max_length=5000, required=False, allow_blank=True, default="")
+    valid_days = IntegerField(min_value=1, max_value=365, required=False, allow_null=True, default=None)
+    items = CharField(max_length=60000, required=False, allow_blank=True, default="")
+    currency = CharField(max_length=3, required=False, allow_blank=True, default="")
+    shipping = CharField(max_length=20, required=False, allow_blank=True, default="")
+    vat_percent = CharField(max_length=20, required=False, allow_blank=True, default="")
+    rfq = UUIDField(required=False, allow_null=True, default=None)
+    draft_id = UUIDField(required=False, allow_null=True, default=None)
+
+    def validate_currency(self, value):
+        value = value.strip().upper()
+        if value and value not in dict(MetaData.CURRENCIES):
+            raise ValidationError("Choose one of the listed currencies.")
+        return value
+
+    def validate_items(self, value):
+        import json
+        if not value.strip():
+            return ""
+        try:
+            rows = json.loads(value)
+        except ValueError:
+            raise ValidationError("The price table could not be read.")
+        if not isinstance(rows, list) or len(rows) > quote_limit() or not all(isinstance(r, dict) for r in rows):
+            raise ValidationError("The price table could not be read.")
+        return json.dumps([{k: str(v)[:200] for k, v in r.items() if k in ("description", "quantity", "unit_price")} for r in rows])
+
+    def validate(self, attrs):
+        if attrs.get("rfq"):
+            found = RFQ.objects.filter(pk=attrs["rfq"]).first()
+            if found is None:
+                raise ValidationError({"rfq": "That order was not found."})
+            attrs["rfq"] = found
+        return attrs
+
+
 class SentEmailListSerial(ModelSerializer):
     """One row of the history table (no message body, to keep the list light)."""
 
@@ -340,7 +385,7 @@ class SentEmailSerial(SentEmailListSerial):
     """The full record, including what was written."""
 
     class Meta(SentEmailListSerial.Meta):
-        fields = SentEmailListSerial.Meta.fields + ["title", "body", "error", "provider_message_id", "quote"]
+        fields = SentEmailListSerial.Meta.fields + ["title", "body", "error", "provider_message_id", "quote", "draft", "rfq"]
 
 
 class AdminSerial(ModelSerializer):

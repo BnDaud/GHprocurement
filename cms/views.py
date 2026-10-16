@@ -10,6 +10,7 @@ from rest_framework.decorators import action
 from rest_framework.decorators import api_view, authentication_classes, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from django.utils import timezone
 from rest_framework import status
 from .fetchtwitter import FetchTwiter
 from .task import  sendEMailAPI_Method
@@ -236,7 +237,32 @@ def AllData(req):  # public: feeds the customer website
 
 
 class EmailView(APIView):
+    def _save_draft(self, request):
+        """Save the form as it is, without sending. Sending the same draft later replaces it."""
+        from .serial import DraftSerial
+        serializer = DraftSerial(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        d = serializer.validated_data
+        fields = dict(
+            kind=d["kind"], recipient=d["recipient"].strip(), recipient_name=d["recipient_name"], subject=d["subject"],
+            title=d["title"], body=d["body"], valid_days=d["valid_days"] if d["kind"] == "rfq_reply" else None,
+            rfq=d["rfq"], draft={"items": d["items"], "currency": d["currency"], "shipping": d["shipping"], "vat_percent": d["vat_percent"]},
+        )
+        record = None
+        if d.get("draft_id"):
+            record = SentEmail.objects.filter(pk=d["draft_id"], status=SentEmail.Status.DRAFT).first()
+            if record is None:
+                return Response({"detail": "That draft no longer exists."}, status=status.HTTP_404_NOT_FOUND)
+            for k, v in fields.items():
+                setattr(record, k, v)
+            record.save()
+        else:
+            record = SentEmail.objects.create(status=SentEmail.Status.DRAFT, **fields)
+        return Response({"id": str(record.pk), "status": "draft", "saved_at": timezone.now()}, status=status.HTTP_200_OK)
+
     def post(self, request):
+        if str(request.data.get("save_draft", "")).lower() in ("1", "true"):
+            return self._save_draft(request)
         serializer = EmailSerial(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -259,6 +285,8 @@ class EmailView(APIView):
             quote=validated_data.get("quote") or {},
             rfq=validated_data.get("rfq"),
         )
+        if validated_data.get("draft_id"):
+            SentEmail.objects.filter(pk=validated_data["draft_id"], status=SentEmail.Status.DRAFT).delete()
         order = validated_data.get("rfq")
         log(request, A.EMAIL_SENT, "email", validated_data["subject"],
             f"to {validated_data['recipient']}" + (f", {record.reference}" if record.reference else "")
@@ -318,6 +346,15 @@ class SentEmailView(ReadOnlyModelViewSet):
         newest = self.get_queryset()[: self.MAX_LIST]
         return Response(self.get_serializer(newest, many=True).data)
 
+    @action(detail=True, methods=["post"], url_path="discard")
+    def discard(self, request, pk=None):
+        """Delete a draft. Emails that were sent are history and cannot be removed."""
+        record = self.get_object()
+        if record.status != SentEmail.Status.DRAFT:
+            return Response({"detail": "Only drafts can be deleted."}, status=status.HTTP_400_BAD_REQUEST)
+        record.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
     @action(detail=True, methods=["get"], url_path="html")
     def html(self, request, pk=None):
         """The email as it was sent (rebuilt from the record). ?download=1 saves it as a file."""
@@ -325,6 +362,8 @@ class SentEmailView(ReadOnlyModelViewSet):
         from .task import render_sent_html
 
         record = self.get_object()
+        if record.status == SentEmail.Status.DRAFT:
+            return Response({"detail": "A draft has not been sent yet."}, status=status.HTTP_400_BAD_REQUEST)
         response = HttpResponse(render_sent_html(record), content_type="text/html; charset=utf-8")
         if request.query_params.get("download"):
             name = (record.reference or f"email-{str(record.pk)[:8]}") + ".html"

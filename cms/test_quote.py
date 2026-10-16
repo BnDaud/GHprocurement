@@ -217,3 +217,64 @@ class SendingQuotes(TrackBase):
     def test_only_admins_can_send(self):
         r = self.anon.post("/api/emails/", {"kind": "rfq_reply", "recipient": "a@b.com", "subject": "s", "title": "t", "body": "b"}, format="multipart")
         self.assertEqual(r.status_code, 401)
+
+
+class Drafts(SendingQuotes):
+    """Saving an email without sending it, and sending a saved draft later."""
+
+    def save(self, **extra):
+        data = {"save_draft": "1", "kind": "rfq_reply", "subject": "Half done", "items": json.dumps([{"description": "Chair", "quantity": "2", "unit_price": ""}]), **extra}
+        return self.super.post("/api/emails/", data, format="multipart")
+
+    def test_an_unfinished_draft_is_saved_without_sending(self):
+        r = self.save()
+        self.assertEqual(r.status_code, 200, r.data)
+        rec = SentEmail.objects.get(pk=r.data["id"])
+        self.assertEqual((rec.status, rec.reference, rec.recipient), ("draft", None, ""))
+        self.assertEqual(len(mail.outbox), 0)
+        self.assertEqual(json.loads(rec.draft["items"])[0]["description"], "Chair")
+
+    def test_saving_again_updates_the_same_draft(self):
+        a = self.save().data["id"]
+        b = self.save(draft_id=a, subject="Better subject").data["id"]
+        self.assertEqual(a, b)
+        self.assertEqual(SentEmail.objects.filter(status="draft").count(), 1)
+        self.assertEqual(SentEmail.objects.get(pk=a).subject, "Better subject")
+
+    def test_a_draft_does_not_touch_the_order_or_take_a_reference(self):
+        self.save(rfq=str(self.rfq.pk))
+        self.rfq.refresh_from_db()
+        self.assertEqual(self.rfq.status, "received")
+        self.assertEqual(SentEmail.objects.get().reference, None)
+
+    def test_sending_a_draft_replaces_it(self):
+        d = self.save().data["id"]
+        r = self.send(draft_id=d)
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertFalse(SentEmail.objects.filter(pk=d).exists())
+        self.assertEqual(SentEmail.objects.filter(status="draft").count(), 0)
+        self.assertEqual(len(mail.outbox), 1)
+
+    def test_drafts_can_be_deleted_but_sent_mail_cannot(self):
+        d = self.save().data["id"]
+        self.assertEqual(self.super.post(f"/api/sent-emails/{d}/discard/").status_code, 204)
+        self.send()
+        sent = SentEmail.objects.exclude(status="draft").get()
+        self.assertEqual(self.super.post(f"/api/sent-emails/{sent.pk}/discard/").status_code, 400)
+        self.assertTrue(SentEmail.objects.filter(pk=sent.pk).exists())
+
+    def test_a_draft_has_no_sent_email_to_view_and_bad_drafts_are_refused(self):
+        d = self.save().data["id"]
+        self.assertEqual(self.super.get(f"/api/sent-emails/{d}/html/").status_code, 400)
+        self.assertEqual(self.save(items="not json").status_code, 400)
+        self.assertEqual(self.save(draft_id="3f1c2a6e-0000-4000-8000-000000000000").status_code, 404)
+        self.assertEqual(self.save(currency="XXX").status_code, 400)
+
+    def test_the_draft_comes_back_in_the_record(self):
+        d = self.save(rfq=str(self.rfq.pk), currency="NGN", shipping="500").data["id"]
+        r = self.super.get(f"/api/sent-emails/{d}/").data
+        self.assertEqual((r["status"], r["draft"]["currency"], r["draft"]["shipping"], str(r["rfq"])), ("draft", "NGN", "500", str(self.rfq.pk)))
+
+    def test_only_admins_can_save_drafts(self):
+        from rest_framework.test import APIClient
+        self.assertIn(APIClient().post("/api/emails/", {"save_draft": "1"}).status_code, (401, 403))
