@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from rest_framework.serializers import ChoiceField, IntegerField, ModelSerializer , SerializerMethodField , ImageField , Serializer , CharField , EmailField ,  ListField , FileField
+from rest_framework.serializers import ChoiceField, DecimalField, UUIDField, IntegerField, ModelSerializer , SerializerMethodField , ImageField , Serializer , CharField , EmailField ,  ListField , FileField
 from .models import User , Catalog,Service , FAQ ,MetaData , RFQ , SentEmail , InboxMessage
 from django.contrib.auth.hashers import make_password
 from rest_framework.exceptions import ValidationError
@@ -182,6 +182,41 @@ class EmailSerial(Serializer):
     recipient_name = CharField(max_length=200, required=False, allow_blank=True, default="")
     # optional: how many days the quote stays valid (RFQ replies only)
     valid_days = IntegerField(min_value=1, max_value=365, required=False, allow_null=True, default=None)
+    # the price table of a quotation: rows as JSON text, added up on the server
+    items = CharField(required=False, allow_blank=True, default="")
+    currency = CharField(max_length=3, required=False, allow_blank=True, default="")
+    shipping = CharField(required=False, allow_blank=True, default="")
+    vat_percent = CharField(required=False, allow_blank=True, default="")
+    # the order (quote request) this quotation is for
+    rfq = UUIDField(required=False, allow_null=True, default=None)
+
+    def validate_currency(self, value):
+        value = value.strip().upper()
+        if value and value not in dict(MetaData.CURRENCIES):
+            raise ValidationError("Choose one of the listed currencies.")
+        return value
+
+    def validate(self, attrs):
+        from decimal import Decimal
+        from . import quote
+
+        kind = attrs.get("kind") or "outreach"
+        rows = quote.parse_items(attrs.get("items"))
+        if (rows or attrs.get("rfq")) and kind != "rfq_reply":
+            raise ValidationError({"items": "A price table and an order can only go with a reply to a quote request."})
+        shipping = quote.optional_amount(attrs.get("shipping"), "Delivery", Decimal(1_000_000_000))
+        vat = quote.optional_amount(attrs.get("vat_percent"), "VAT", Decimal(100))
+        if (shipping or vat) and not rows:
+            raise ValidationError({"items": "Add at least one row to the price table, or clear delivery and VAT."})
+        currency = attrs.get("currency") or (MetaData.objects.values_list("currency", flat=True).first() or "USD")
+        attrs["quote"] = quote.build(rows, currency, shipping, vat)
+        if attrs.get("rfq"):
+            from .models import RFQ
+            found = RFQ.objects.filter(pk=attrs["rfq"]).first()
+            if found is None:
+                raise ValidationError({"rfq": "That order was not found."})
+            attrs["rfq"] = found
+        return attrs
 
     attachments = ListField(
         child=FileField(),
@@ -234,7 +269,16 @@ class SentEmailListSerial(ModelSerializer):
         model = SentEmail
         fields = ["id", "reference", "kind", "recipient", "recipient_name", "subject",
                   "valid_days", "attachments_count", "attachments", "status",
-                  "created_at", "sent_at"]
+                  "created_at", "sent_at", "order_reference", "total"]
+
+    order_reference = SerializerMethodField()
+    total = SerializerMethodField()
+
+    def get_order_reference(self, obj):
+        return obj.rfq.reference if obj.rfq_id else ""
+
+    def get_total(self, obj):
+        return (obj.quote or {}).get("total_text", "")
 
     def get_attachments(self, obj):
         return obj.attachments_info
@@ -244,7 +288,7 @@ class SentEmailSerial(SentEmailListSerial):
     """The full record, including what was written."""
 
     class Meta(SentEmailListSerial.Meta):
-        fields = SentEmailListSerial.Meta.fields + ["title", "body", "error", "provider_message_id"]
+        fields = SentEmailListSerial.Meta.fields + ["title", "body", "error", "provider_message_id", "quote"]
 
 
 class AdminSerial(ModelSerializer):

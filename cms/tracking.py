@@ -42,7 +42,8 @@ def quotation_reference(rfq):
     """The GHP-... number of the latest quotation emailed for this request."""
     from .models import SentEmail
 
-    sent = SentEmail.objects.filter(kind="rfq_reply", recipient__iexact=rfq.email).exclude(reference=None).first()
+    sent = (SentEmail.objects.filter(kind="rfq_reply", rfq=rfq).exclude(reference=None).first()
+            or SentEmail.objects.filter(kind="rfq_reply", recipient__iexact=rfq.email, rfq__isnull=True).exclude(reference=None).first())
     return sent.reference if sent else ""
 
 

@@ -256,9 +256,27 @@ class EmailView(APIView):
             ],  # names and sizes only: the files themselves are never stored
             valid_days=validated_data.get("valid_days") if validated_data["kind"] == "rfq_reply" else None,
             attachments_count=len(validated_data.get("attachments", [])),
+            quote=validated_data.get("quote") or {},
+            rfq=validated_data.get("rfq"),
         )
+        order = validated_data.get("rfq")
         log(request, A.EMAIL_SENT, "email", validated_data["subject"],
-            f"to {validated_data['recipient']}" + (f", {record.reference}" if record.reference else ""))
+            f"to {validated_data['recipient']}" + (f", {record.reference}" if record.reference else "")
+            + (f", total {validated_data['quote']['total_text']}" if validated_data.get("quote") else "")
+            + (f", for order {order.reference}" if order else ""))
+        if order:
+            # sending the quotation moves the order to "Quoted" and records it, without a second email to the customer
+            validated_data["order_reference"] = order.reference
+            validated_data["order_id"] = str(order.pk)
+            quoted_at = STAGE_ORDER.index("quoted")
+            stage = "quoted" if STAGE_ORDER.index(order.status) < quoted_at else order.status
+            before = order.status
+            update = tracking.add_update(order, stage, f"Quotation {record.reference} sent",
+                                         "Your quotation has been emailed to you.", created_by=request.user)
+            moved = tracking.STAGE_LABELS.get(before) != tracking.STAGE_LABELS.get(stage)
+            log(request, A.CREATED, "order update", f"{order.reference}: {update.headline}",
+                (f"moved from {tracking.STAGE_LABELS.get(before)} to {tracking.STAGE_LABELS.get(stage)}" if moved
+                 else f"note at {tracking.STAGE_LABELS.get(stage)}") + "; quotation emailed")
         validated_data["record_id"] = str(record.pk)
         validated_data["reference"] = record.reference
         validated_data["sent_at"] = record.created_at
@@ -273,6 +291,7 @@ class EmailView(APIView):
             })
 
         validated_data["attachments"] = attachments
+        validated_data.pop("rfq", None)
 
         threading.Thread(
             target=sendEMailAPI_Method,

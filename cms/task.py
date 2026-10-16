@@ -4,6 +4,7 @@ import io
 import mimetypes
 from django.core.mail import EmailMultiAlternatives
 import os, re, logging
+from urllib.parse import quote
 from datetime import datetime
 from email.mime.image import MIMEImage
 
@@ -53,7 +54,8 @@ def company_info():
     }
 
 
-TEMPLATES = {"outreach": "email.html", "rfq_reply": "email_rfq.html"}
+# the same dark layout (photo header, white logo) for every email the CMS sends
+LOGO_WHITE_PATH = os.path.join(settings.BASE_DIR, "templates", "assets", "email-logo-white.png")
 
 
 def build_email(data):
@@ -71,10 +73,10 @@ def build_email(data):
 
     logo_bytes = None
     try:
-        with open(LOGO_PATH, "rb") as fh:
+        with open(LOGO_WHITE_PATH, "rb") as fh:
             logo_bytes = fh.read()
     except OSError:
-        logger.warning("Email logo %s missing; falling back to the hosted logo", LOGO_PATH)
+        logger.warning("Email logo %s missing; falling back to the hosted logo", LOGO_WHITE_PATH)
 
     valid_days = data.get("valid_days") if kind == "rfq_reply" else None
     valid_until = format_date(sent_at + timedelta(days=valid_days)) if valid_days else ""
@@ -93,9 +95,23 @@ def build_email(data):
         "reference": data.get("reference") or "",
         "prepared_for": (data.get("recipient_name") or "").strip() or data["recipient"],
         "valid_until": valid_until,
+        "is_quote": kind == "rfq_reply",
+        "quote": data.get("quote") or {},
+        "order_reference": data.get("order_reference") or "",
+        "header_image": getattr(settings, "EMAIL_HEADER_IMAGE", "https://cms.ghprocurement.com/email/header.jpg"),
         **info,
     }
-    html_content = render_to_string(TEMPLATES.get(kind, "email.html"), context)
+    # one button: track the order (a quotation for an order), or reply
+    if kind == "rfq_reply" and data.get("order_id"):
+        context["button_label"] = "See my order"
+        context["button_url"] = f"{getattr(settings, 'PUBLIC_SITE_URL', 'https://www.ghprocurement.com').rstrip('/')}/account/{data['order_id']}"
+    elif kind == "rfq_reply":
+        context["button_label"] = ""
+        context["button_url"] = ""
+    else:
+        context["button_label"] = "Reply to this email"
+        context["button_url"] = f"mailto:{info['contact_email']}?subject=Re%3A%20{quote(data['subject'], safe='')}"
+    html_content = render_to_string("email_mail.html", context)
 
     text_lines = []
     if kind == "rfq_reply":
@@ -105,6 +121,17 @@ def build_email(data):
             text_lines += [f"Valid until: {valid_until}"]
         text_lines += [""]
     text_lines += [title, "", body.strip(), ""]
+    q = data.get("quote") or {}
+    if q.get("rows"):
+        text_lines += [f"Price breakdown ({q['currency']}):"]
+        for r in q["rows"]:
+            text_lines += [f"  {r['description']}: {r['quantity']} x {r['unit_price_text']} = {r['line_total_text']}"]
+        text_lines += [f"  Subtotal: {q['subtotal_text']}"]
+        if q.get("shipping_text"):
+            text_lines += [f"  Delivery: {q['shipping_text']}"]
+        if q.get("vat_text"):
+            text_lines += [f"  VAT ({q['vat_percent']}%): {q['vat_text']}"]
+        text_lines += [f"  TOTAL: {q['total_text']}", ""]
     if files:
         text_lines += [f"Attachments ({len(files)}):"] + [
             f"  - {f['name']} ({f['size']})" for f in files

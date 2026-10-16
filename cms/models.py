@@ -203,6 +203,10 @@ class SentEmail(models.Model):
     attachments_count = models.PositiveSmallIntegerField(default=0)
     # [{"name": ..., "size": bytes, "type": mime}] -- names only, never the files
     attachments_info = models.JSONField(default=list, blank=True)
+    # the price table of a quotation (rows, subtotal, delivery, VAT, total), as it was sent
+    quote = models.JSONField(default=dict, blank=True)
+    # the order this was sent for, when it was sent from the Orders page
+    rfq = models.ForeignKey("RFQ", null=True, blank=True, on_delete=models.SET_NULL, related_name="sent_emails")
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.QUEUED)
     error = models.TextField(blank=True)
     provider_message_id = models.CharField(max_length=100, blank=True)
