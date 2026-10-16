@@ -101,6 +101,11 @@ class RFQSerial(ModelSerializer):
     file = ImageField(required=False, allow_null=True)
     # the customer must tick the agreement before a NEW request is accepted
     consent = serializers.BooleanField(write_only=True, required=False)
+    # what the customer wants, line by line (JSON text) with optional pictures by position
+    items_json = serializers.CharField(write_only=True, required=False, allow_blank=True, max_length=20000)
+    item_images = serializers.ListField(child=serializers.FileField(), write_only=True, required=False)
+    items = SerializerMethodField(read_only=True)
+    item = serializers.CharField(required=False, allow_blank=True, max_length=5000)
     
     class Meta:
         model = RFQ
@@ -112,10 +117,60 @@ class RFQSerial(ModelSerializer):
     def get_file_url(self , obj):
         return obj.file.url if obj.file else None
 
+    def get_items(self, obj):
+        from . import images
+        return [{"id": str(i.id), "description": i.description, "quantity": f"{i.quantity.normalize():f}",
+                 "has_picture": bool(i.image_id),
+                 "picture": images.url(i.image_id, i.image_version, 1000),
+                 "thumb": images.url(i.image_id, i.image_version, 160)} for i in obj.items.all()]
+
     def validate(self, attrs):
+        import json
+        from decimal import Decimal, InvalidOperation
+        from . import images
+
         if self.instance is None and attrs.get("consent") is not True:
             raise serializers.ValidationError(
                 {"consent": "Please agree so we can reply and create your account."})
+        if self.instance is not None:
+            return attrs
+        raw = attrs.pop("items_json", "") or ""
+        files = attrs.pop("item_images", []) or []
+        rows = []
+        if raw.strip():
+            try:
+                parsed = json.loads(raw)
+            except ValueError:
+                raise serializers.ValidationError({"items_json": "The list could not be read."})
+            if not isinstance(parsed, list) or not parsed or len(parsed) > 10 or not all(isinstance(r, dict) for r in parsed):
+                raise serializers.ValidationError({"items_json": "Add between 1 and 10 items."})
+            for n, r in enumerate(parsed, 1):
+                desc = str(r.get("description", "")).strip()
+                if not desc or len(desc) > 200:
+                    raise serializers.ValidationError({"items_json": f"Item {n}: describe it in up to 200 characters."})
+                try:
+                    qty = Decimal(str(r.get("quantity", "1")).replace(",", "").strip() or "1")
+                except InvalidOperation:
+                    qty = Decimal(0)
+                if not qty.is_finite() or qty <= 0 or qty > 1_000_000:
+                    raise serializers.ValidationError({"items_json": f"Item {n}: enter a quantity."})
+                idx = r.get("image")
+                if idx is not None and (not isinstance(idx, int) or isinstance(idx, bool) or idx < 0 or idx >= len(files)):
+                    raise serializers.ValidationError({"items_json": f"Item {n}: its picture is missing."})
+                rows.append({"description": desc, "quantity": qty.quantize(Decimal("0.001")), "image": idx})
+        elif not (attrs.get("item") or "").strip():
+            raise serializers.ValidationError({"item": "Tell us what you need."})
+        compressed = {}
+        for r in rows:
+            if r["image"] is not None and r["image"] not in compressed:
+                try:
+                    compressed[r["image"]] = images.compress(files[r["image"]])
+                except ValueError as e:
+                    raise serializers.ValidationError({"item_images": str(e)})
+        attrs["_rows"], attrs["_pictures"] = rows, compressed
+        note = (attrs.get("item") or "").strip()
+        lines = [f"{r['quantity'].normalize():f} x {r['description']}" for r in rows]
+        attrs["item"] = ("\n".join(lines) + (f"\n\n{note}" if note else "")) if lines else note
         return attrs
     
     def create(self, validated_data):
@@ -123,6 +178,8 @@ class RFQSerial(ModelSerializer):
         from . import tracking
 
         validated_data.pop("consent", None)
+        rows = validated_data.pop("_rows", [])
+        pictures = validated_data.pop("_pictures", {})
 
         # the account is found (or made) from the EMAIL, never the company name;
         # a new one has no password until the customer picks one from the emailed link
@@ -137,6 +194,15 @@ class RFQSerial(ModelSerializer):
             item=validated_data["item"],
             file=validated_data.get("file"),
                )
+        from . import images
+        from .models import RFQItem
+        stored = {}
+        for n, r in enumerate(rows):
+            if r["image"] is not None and r["image"] not in stored:
+                stored[r["image"]] = images.store(pictures[r["image"]]) or ("", "")
+            pid, ver = stored.get(r["image"], ("", ""))
+            RFQItem.objects.create(rfq=rfq, position=n, description=r["description"], quantity=r["quantity"],
+                                   image_id=pid, image_version=ver)
         tracking.add_update(rfq, "received", "We have your request")
         rfq._new_account = created
         return rfq
@@ -261,9 +327,25 @@ class EmailSerial(Serializer):
         for n, r in enumerate(rows, 1):
             if r["image"] is not None and r["image"] >= len(thumbs):
                 raise ValidationError({"items": f"Row {n}: its picture is missing."})
+        order_thumbs = {}
+        wanted = [(n, r["rfq_item"]) for n, r in enumerate(rows) if r["image"] is None and r["rfq_item"]]
+        if wanted:
+            from . import images
+            from .models import RFQItem
+            if not attrs.get("rfq"):
+                raise ValidationError({"items": "Order pictures can only be used when the quotation is for that order."})
+            for n, item_id in wanted:
+                try:
+                    item = RFQItem.objects.filter(pk=item_id, rfq_id=attrs["rfq"]).first()
+                except Exception:
+                    item = None
+                data = images.fetch_small(item.image_id, item.image_version) if item and item.image_id else b""
+                if data:
+                    order_thumbs[n] = data
+                    rows[n]["image"] = -1  # marks "has a picture" for the saved table
         attrs["quote"] = quote.build(rows, currency, shipping, vat)
         # row position -> thumbnail bytes (shown inside the table, never listed as an attachment)
-        attrs["item_thumbs"] = {n: thumbs[r["image"]] for n, r in enumerate(rows) if r["image"] is not None}
+        attrs["item_thumbs"] = {**{n: thumbs[r["image"]] for n, r in enumerate(rows) if r["image"] is not None and r["image"] >= 0}, **order_thumbs}
         if attrs.get("rfq"):
             from .models import RFQ
             found = RFQ.objects.filter(pk=attrs["rfq"]).first()
@@ -346,7 +428,7 @@ class DraftSerial(Serializer):
             raise ValidationError("The price table could not be read.")
         if not isinstance(rows, list) or len(rows) > quote_limit() or not all(isinstance(r, dict) for r in rows):
             raise ValidationError("The price table could not be read.")
-        return json.dumps([{k: str(v)[:200] for k, v in r.items() if k in ("description", "quantity", "unit_price")} for r in rows])
+        return json.dumps([{k: str(v)[:500 if k == "thumb" else 200] for k, v in r.items() if k in ("description", "quantity", "unit_price", "rfq_item", "thumb")} for r in rows])
 
     def validate(self, attrs):
         if attrs.get("rfq"):

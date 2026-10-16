@@ -56,8 +56,10 @@ def parse_items(raw):
             image = None
         elif not isinstance(image, int) or isinstance(image, bool) or image < 0:
             raise ValidationError(f"Row {i}: the picture could not be read.")
+        order_item = str(row.get("rfq_item") or "").strip() or None
         clean.append({
             "image": image,
+            "rfq_item": order_item,
             "description": description,
             "quantity": _dec(row.get("quantity"), f"Row {i} quantity", Decimal("0.001"), Decimal(1_000_000), places=3),
             "unit_price": _dec(row.get("unit_price"), f"Row {i} unit price", Decimal(0), Decimal(1_000_000_000)),

@@ -112,6 +112,16 @@ class RFQView(AuditedMixin, ModelViewSet):
         
         return Response({"Error":"Bad Request", "fields": serial.errors} , status=status.HTTP_400_BAD_REQUEST)
 
+    @action(detail=True, methods=["post"], url_path="remove-pictures")
+    def remove_pictures(self, request, pk=None):
+        """Delete the customer's pictures of this request now (they are also deleted after delivery)."""
+        from . import images
+        rfq = self.get_object()
+        count = images.purge_rfq(rfq)
+        log(request, A.DELETED, "quote request", f"{rfq.reference}: {count} picture(s) removed")
+        rfq.refresh_from_db()
+        return Response({"removed": count, "remaining": images.has_pictures(rfq)}, status=status.HTTP_200_OK)
+
     # ---- progress updates (admin): what the customer sees on their tracking page
     def _update_body(self, request, partial=False):
         d = request.data

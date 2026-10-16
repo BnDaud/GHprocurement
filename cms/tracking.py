@@ -30,7 +30,17 @@ def recompute_status(rfq):
     newest = rfq.updates.order_by("-created_at").first()
     rfq.status = newest.stage if newest else RFQStage.RECEIVED
     rfq.save(update_fields=["status"])
+    if rfq.status == RFQStage.DELIVERED:
+        in_background(purge_pictures, str(rfq.pk))  # the order is complete: its pictures are no longer needed
     return rfq.status
+
+
+def purge_pictures(rfq_id):
+    """Delete the customer's pictures of a finished order (retried the next time if Cloudinary fails)."""
+    from . import images
+    rfq = RFQ.objects.filter(pk=rfq_id).first()
+    if rfq and images.has_pictures(rfq):
+        images.purge_rfq(rfq)
 
 
 def short_title(rfq):

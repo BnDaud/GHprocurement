@@ -143,6 +143,8 @@ class RFQ(models.Model):
     status = models.CharField(max_length=12, choices=RFQStage.choices, default=RFQStage.RECEIVED)
     estimated_delivery = models.DateField(null=True, blank=True)
     delivery_address = models.CharField(max_length=500, blank=True)
+    # set once the customer's pictures have been deleted (after delivery, or by hand)
+    pictures_removed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
@@ -153,6 +155,25 @@ class RFQ(models.Model):
 
     def __str__(self):
         return self.reference or f"{self.company}: {self.item[:40]}"
+
+
+class RFQItem(models.Model):
+    """One line of a quote request: what the customer wants, how many, and an optional picture.
+    The picture lives on Cloudinary (compressed) and is deleted once the order is delivered."""
+
+    id = models.UUIDField(default=uuid4, primary_key=True, editable=False)
+    rfq = models.ForeignKey(RFQ, related_name="items", on_delete=models.CASCADE)
+    position = models.PositiveSmallIntegerField(default=0)
+    description = models.CharField(max_length=200)
+    quantity = models.DecimalField(max_digits=12, decimal_places=3, default=1)
+    image_id = models.CharField(max_length=255, blank=True)       # Cloudinary public id; blank = no picture
+    image_version = models.CharField(max_length=20, blank=True)   # part of the link: a new upload is a new link
+
+    class Meta:
+        ordering = ["position"]
+
+    def __str__(self):
+        return f"{self.quantity} x {self.description}"
 
 
 class RFQUpdate(models.Model):
