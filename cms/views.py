@@ -318,6 +318,20 @@ class SentEmailView(ReadOnlyModelViewSet):
         newest = self.get_queryset()[: self.MAX_LIST]
         return Response(self.get_serializer(newest, many=True).data)
 
+    @action(detail=True, methods=["get"], url_path="html")
+    def html(self, request, pk=None):
+        """The email as it was sent (rebuilt from the record). ?download=1 saves it as a file."""
+        from django.http import HttpResponse
+        from .task import render_sent_html
+
+        record = self.get_object()
+        response = HttpResponse(render_sent_html(record), content_type="text/html; charset=utf-8")
+        if request.query_params.get("download"):
+            name = (record.reference or f"email-{str(record.pk)[:8]}") + ".html"
+            response["Content-Disposition"] = f'attachment; filename="{name}"'
+        response["Cache-Control"] = "no-store"
+        return response
+
 
 class AdminView(ViewSet):
     """Administrators: the accounts that can sign in to the CMS. Only a super

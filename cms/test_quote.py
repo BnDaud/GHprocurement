@@ -105,6 +105,27 @@ class SendingQuotes(TrackBase):
         self.assertNotIn("chair.png", m.body)  # not listed as an attachment
         self.assertTrue(SentEmail.objects.latest("created_at").quote["rows"][0]["has_image"])
 
+    def test_the_sent_email_can_be_viewed_and_downloaded_with_a_placeholder_for_pictures(self):
+        rows = [dict(ROWS[0], image=0), ROWS[1]]
+        self.assertEqual(self.send(items=json.dumps(rows), item_images=[self._png()]).status_code, 200)
+        rec = SentEmail.objects.latest("created_at")
+        r = self.super.get(f"/api/sent-emails/{rec.pk}/html/")
+        self.assertEqual(r.status_code, 200)
+        h = r.content.decode()
+        for must in ("Price breakdown (NGN)", "Office chair", "₦1,427,065.19", rec.reference, "Picture", "not kept", "data:image/png;base64"):
+            self.assertIn(must, h, must)
+        self.assertNotIn("cid:", h)
+        self.assertEqual(h.count("not kept"), 1)  # only the row that had a picture
+        self.assertNotIn("attachment", r.get("Content-Disposition", ""))
+        d = self.super.get(f"/api/sent-emails/{rec.pk}/html/?download=1")
+        self.assertIn(f'filename="{rec.reference}.html"', d["Content-Disposition"])
+
+    def test_only_admins_can_view_the_sent_email_html(self):
+        self.send()
+        rec = SentEmail.objects.latest("created_at")
+        from rest_framework.test import APIClient
+        self.assertIn(APIClient().get(f"/api/sent-emails/{rec.pk}/html/").status_code, (401, 403))
+
     def test_pictures_are_optional(self):
         r = self.send()
         self.assertEqual(r.status_code, 200)

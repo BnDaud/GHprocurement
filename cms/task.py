@@ -58,30 +58,19 @@ def company_info():
 LOGO_WHITE_PATH = os.path.join(settings.BASE_DIR, "templates", "assets", "email-logo-white.png")
 
 
-def build_email(data):
-    """Build (but do not send) the message: HTML + plain-text parts, an inline
-    logo, and the attachments. Kept separate from sending so it can be tested."""
+def _render_html(data, files, logo_cid, logo_url, thumbs, placeholders=False):
+    """The HTML of the email, and the formatted "valid until" date."""
     from datetime import timedelta
     from .references import format_date, lagos_now
 
     kind = data.get("kind") or "outreach"
     title = data["title"]
     body = data["body"]
-    attachments = data.get("attachments", [])
     sent_at = data.get("sent_at") or lagos_now()
     info = company_info()
-
-    logo_bytes = None
-    try:
-        with open(LOGO_WHITE_PATH, "rb") as fh:
-            logo_bytes = fh.read()
-    except OSError:
-        logger.warning("Email logo %s missing; falling back to the hosted logo", LOGO_WHITE_PATH)
-
     valid_days = data.get("valid_days") if kind == "rfq_reply" else None
     valid_until = format_date(sent_at + timedelta(days=valid_days)) if valid_days else ""
 
-    files = [{"name": f["name"], "size": _human_size(len(f["content"]))} for f in attachments]
     context = {
         "title": title,
         "subject": data["subject"],
@@ -89,8 +78,8 @@ def build_email(data):
         "preheader": " ".join(body.split())[:110],
         "attachments": files,
         "year": datetime.now().year,
-        "logo_cid": LOGO_CID if logo_bytes else "",
-        "logo_url": LOGO_FALLBACK_URL,
+        "logo_cid": logo_cid,
+        "logo_url": logo_url,
         "date": format_date(sent_at),
         "reference": data.get("reference") or "",
         "prepared_for": (data.get("recipient_name") or "").strip() or data["recipient"],
@@ -111,19 +100,47 @@ def build_email(data):
     else:
         context["button_label"] = "Reply to this email"
         context["button_url"] = f"mailto:{info['contact_email']}?subject=Re%3A%20{quote(data['subject'], safe='')}"
-    thumbs = data.get("item_thumbs") or {}
-    if thumbs and context["quote"].get("rows"):
+    if context["quote"].get("rows"):
         rows = [dict(r) for r in context["quote"]["rows"]]
-        for n in thumbs:
-            if n < len(rows):
-                rows[n]["image_cid"] = f"item{n}"
+        for n, r in enumerate(rows):
+            if n in thumbs:
+                r["image_cid"] = f"item{n}"
+            elif placeholders and r.get("has_image"):
+                r["image_placeholder"] = True  # the picture was not kept; show where it was
         context["quote"] = {**context["quote"], "rows": rows}
-    html_content = render_to_string("email_mail.html", context)
+    return render_to_string("email_mail.html", context), valid_until
+
+
+
+def build_email(data):
+    """Build (but do not send) the message: HTML + plain-text parts, an inline
+    logo, and the attachments. Kept separate from sending so it can be tested."""
+    from datetime import timedelta
+    from .references import format_date, lagos_now
+
+    kind = data.get("kind") or "outreach"
+    title = data["title"]
+    body = data["body"]
+    attachments = data.get("attachments", [])
+    sent_at = data.get("sent_at") or lagos_now()
+    info = company_info()
+
+    logo_bytes = None
+    try:
+        with open(LOGO_WHITE_PATH, "rb") as fh:
+            logo_bytes = fh.read()
+    except OSError:
+        logger.warning("Email logo %s missing; falling back to the hosted logo", LOGO_WHITE_PATH)
+
+    thumbs = data.get("item_thumbs") or {}
+    files = [{"name": f["name"], "size": _human_size(len(f["content"]))} for f in attachments]
+    html_content, valid_until = _render_html(data, files, LOGO_CID if logo_bytes else "", LOGO_FALLBACK_URL, thumbs)
+    info = company_info()
 
     text_lines = []
     if kind == "rfq_reply":
-        text_lines += [f"QUOTATION  {context['reference']}".strip(), f"Date: {context['date']}"]
-        text_lines += [f"Prepared for: {context['prepared_for']}"]
+        text_lines += [f"QUOTATION  {data.get('reference') or ''}".strip(), f"Date: {format_date(sent_at)}"]
+        text_lines += [f"Prepared for: {(data.get('recipient_name') or '').strip() or data['recipient']}"]
         if valid_until:
             text_lines += [f"Valid until: {valid_until}"]
         text_lines += [""]
@@ -174,6 +191,27 @@ def build_email(data):
             mimetype=file["content_type"],
         )
     return email
+
+
+def render_sent_html(record):
+    """The email as it went out, rebuilt from the saved record (for viewing and download in
+    the CMS). The logo is embedded; pictures of items were never kept, so a placeholder
+    marks each place where one was."""
+    import base64
+
+    try:
+        with open(LOGO_WHITE_PATH, "rb") as fh:
+            logo_url = "data:image/png;base64," + base64.b64encode(fh.read()).decode()
+    except OSError:
+        logo_url = LOGO_FALLBACK_URL
+    data = {
+        "kind": record.kind, "subject": record.subject, "title": record.title, "body": record.body,
+        "recipient": record.recipient, "recipient_name": record.recipient_name, "valid_days": record.valid_days,
+        "reference": record.reference or "", "quote": record.quote or {}, "sent_at": record.created_at,
+        "order_reference": record.rfq.reference if record.rfq_id else "", "order_id": record.rfq_id,
+    }
+    files = [{"name": f.get("name", ""), "size": _human_size(int(f.get("size") or 0))} for f in (record.attachments_info or [])]
+    return _render_html(data, files, "", logo_url, {}, placeholders=True)[0]
 
 
 def _record_outcome(record_id, **fields):
