@@ -48,3 +48,8 @@ if os.environ.get("TEST_FAKE_DOCS"):  # local checks without Cloudinary: documen
     _documents.store = _store
     _documents.fetch = lambda file_id: _kept.get(file_id, b"")
     _documents.delete = lambda file_id: bool(_kept.pop(file_id, True))
+
+if os.environ.get("TEST_FAKE_DOCS"):  # local checks: uploaded pictures become Cloudinary's public demo image
+    from cloudinary import CloudinaryResource as _Resource, uploader as _uploader
+
+    _uploader.upload_resource = lambda file, **kw: _Resource("sample", format="jpg", type="upload", resource_type="image")
