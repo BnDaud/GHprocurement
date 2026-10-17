@@ -34,3 +34,17 @@ if os.environ.get("TEST_FILE_EMAIL"):  # local checks: write each email to a fil
         EMAIL_BACKEND = "cms.devmail.AllowlistBackend"
 TWITTER_REFRESH_SYNC = True
 
+
+if os.environ.get("TEST_FAKE_DOCS"):  # local checks without Cloudinary: documents are kept in memory
+    from cms import documents as _documents
+
+    _kept = {}
+
+    def _store(file):
+        key = f"RFQ_Docs/fake{len(_kept) + 1}"
+        _kept[key] = file.read()
+        return key
+
+    _documents.store = _store
+    _documents.fetch = lambda file_id: _kept.get(file_id, b"")
+    _documents.delete = lambda file_id: bool(_kept.pop(file_id, True))
