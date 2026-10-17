@@ -299,6 +299,22 @@ def email_update(update_id):
         logger.exception("could not send the update email for %s", update_id)
 
 
+def email_staff_accepted(rfq_id):
+    """Tell the team a customer accepted their quotation on the website."""
+    try:
+        from .task import company_info
+        rfq = RFQ.objects.get(pk=rfq_id)
+        ref = quotation_reference(rfq)
+        _send(company_info()["contact_email"], f"{rfq.reference}: the customer accepted the quotation",
+              "A customer accepted a quotation",
+              [f"{rfq.name} ({rfq.company}) accepted the quotation{f' {ref}' if ref else ''} for {short_title(rfq)}.",
+               "The order has moved to Confirmed. Check the payment terms with them, then carry on from the order page."],
+              "Open the order", f"https://cms.ghprocurement.com/orders/{rfq.pk}", "", [("Customer", rfq.email), ("Phone", rfq.phone or "-")],
+              label="Quotation accepted", reference=rfq.reference)
+    except Exception:  # noqa: BLE001
+        logger.exception("could not tell the team that %s accepted", rfq_id)
+
+
 def render_update_email(update):
     """The email the customer got for this update, as HTML (for the tracking page). The first update shows the
     receipt without its password link (that link is private and single-use); a quotation shows the quotation."""

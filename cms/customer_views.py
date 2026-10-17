@@ -129,6 +129,33 @@ class CustomerRequestDetailView(APIView):
         return Response(tracking.request_detail(rfq))
 
 
+class CustomerAcceptQuoteView(APIView):
+    """The customer accepts their quotation on the website: the order moves from Quoted to Confirmed."""
+    permission_classes = [IsCustomer]
+
+    def post(self, request, pk):
+        from django.db import transaction
+        try:
+            uid = uuid.UUID(str(pk))
+        except ValueError:
+            return _bad("Request not found.", status.HTTP_404_NOT_FOUND)
+        with transaction.atomic():
+            rfq = RFQ.objects.select_for_update().filter(user=request.user, pk=uid).first()  # only their own
+            if rfq is None:
+                return _bad("Request not found.", status.HTTP_404_NOT_FOUND)
+            if rfq.status != "quoted":
+                done = tracking.step_of(rfq.status) > tracking.step_of("quoted")
+                return _bad("This request has already moved on." if done else "There is no quotation to accept yet.", status.HTTP_409_CONFLICT)
+            ref = tracking.quotation_reference(rfq)
+            update = tracking.add_update(rfq, "confirmed", "You accepted the quotation",
+                                         f"You accepted quotation {ref} on the website." if ref else "You accepted the quotation on the website.")
+        log(request, A.UPDATED, "order update", rfq.reference, "customer accepted the quotation; moved from Quoted to Confirmed")
+        tracking.in_background(tracking.email_update, str(update.pk))
+        tracking.in_background(tracking.email_staff_accepted, str(rfq.pk))
+        rfq.refresh_from_db()
+        return Response(tracking.request_detail(rfq))
+
+
 class CustomerUpdateEmailView(APIView):
     """The email that went with one progress update, so the customer can read it without opening their inbox."""
     permission_classes = [IsCustomer]
