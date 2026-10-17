@@ -165,6 +165,29 @@ class CustomerMessagesView(APIView):
         return Response(tracking.message_json(m), status=status.HTTP_201_CREATED)
 
 
+class CustomerDocumentView(APIView):
+    """Download one document of the customer's own order."""
+    permission_classes = [IsCustomer]
+
+    def get(self, request, pk, doc_id):
+        from django.http import HttpResponse
+        from . import documents as docs
+        try:
+            rfq = RFQ.objects.filter(user=request.user, pk=uuid.UUID(str(pk))).first()
+            doc = rfq.documents.filter(pk=uuid.UUID(str(doc_id))).first() if rfq else None
+        except ValueError:
+            doc = None
+        if doc is None:
+            return _bad("Document not found.", status.HTTP_404_NOT_FOUND)
+        data = docs.fetch(doc.file_id)
+        if not data:
+            return _bad("The file could not be loaded. Please try again in a moment.", status.HTTP_502_BAD_GATEWAY)
+        response = HttpResponse(data, content_type="application/pdf")
+        response["Content-Disposition"] = f'attachment; filename="{docs.filename(doc.title)}"'
+        response["Cache-Control"] = "private, no-store"
+        return response
+
+
 class CustomerAcceptQuoteView(APIView):
     """The customer accepts their quotation on the website: the order moves from Quoted to Confirmed."""
     permission_classes = [IsCustomer]

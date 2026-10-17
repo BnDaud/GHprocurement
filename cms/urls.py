@@ -5,7 +5,7 @@ from .auth_views import (LoginView, LoginMfaView, MeView, ChangePasswordView, Mf
                          MfaConfirmView, MfaDisableView, MfaRecoveryCodesView)
 from .inbound import postmark_inbound
 from .customer_views import (CustomerLoginView, RequestLinkView, SetPasswordView, CustomerMeView,
-                             CustomerRequestsView, CustomerRequestDetailView, GuestTrackView, CustomerUpdateEmailView, GuestUpdateEmailView, CustomerAcceptQuoteView, CustomerMessagesView)
+                             CustomerRequestsView, CustomerRequestDetailView, GuestTrackView, CustomerUpdateEmailView, GuestUpdateEmailView, CustomerAcceptQuoteView, CustomerMessagesView, CustomerDocumentView)
 from django.urls import path , include
 
 
@@ -40,6 +40,7 @@ path("emails/" ,EmailView.as_view() ),
   path("customer/requests/<str:pk>/", CustomerRequestDetailView.as_view()),
   path("customer/requests/<str:pk>/accept/", CustomerAcceptQuoteView.as_view()),
   path("customer/requests/<str:pk>/messages/", CustomerMessagesView.as_view()),
+  path("customer/requests/<str:pk>/documents/<str:doc_id>/", CustomerDocumentView.as_view()),
   path("customer/requests/<str:pk>/updates/<str:update_id>/email/", CustomerUpdateEmailView.as_view()),
   path("customer/track/email/", GuestUpdateEmailView.as_view()),
   path("customer/track/", GuestTrackView.as_view()),

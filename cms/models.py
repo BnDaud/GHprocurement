@@ -157,6 +157,10 @@ class RFQ(models.Model):
     delivery_address = models.CharField(max_length=500, blank=True)
     # set once the customer's pictures have been deleted (after delivery, or by hand)
     pictures_removed_at = models.DateTimeField(null=True, blank=True)
+    # the shipment, typed in by the team when the goods ship (the customer sees them on the order page)
+    carrier = models.CharField(max_length=120, blank=True)
+    tracking_number = models.CharField(max_length=120, blank=True)
+    tracking_url = models.URLField(max_length=500, blank=True)
     created_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
@@ -186,6 +190,34 @@ class RFQItem(models.Model):
 
     def __str__(self):
         return f"{self.quantity} x {self.description}"
+
+
+class OrderDocument(models.Model):
+    """A PDF the team adds to an order (invoice, packing list, airway bill) for the customer to download.
+    The file is kept privately on Cloudinary and only ever handed out through the API, to the order's owner."""
+
+    class Kind(models.TextChoices):
+        INVOICE = "invoice", "Invoice"
+        PACKING_LIST = "packing_list", "Packing list"
+        AIRWAY_BILL = "airway_bill", "Airway bill"
+        BILL_OF_LADING = "bill_of_lading", "Bill of lading"
+        RECEIPT = "receipt", "Receipt"
+        OTHER = "other", "Other document"
+
+    id = models.UUIDField(default=uuid4, primary_key=True, editable=False)
+    rfq = models.ForeignKey(RFQ, related_name="documents", on_delete=models.CASCADE)
+    kind = models.CharField(max_length=20, choices=Kind.choices, default=Kind.OTHER)
+    title = models.CharField(max_length=120)
+    file_id = models.CharField(max_length=255)   # Cloudinary public id
+    size = models.PositiveIntegerField(default=0)
+    uploaded_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["created_at"]
+
+    def __str__(self):
+        return f"{self.title} ({self.rfq_id})"
 
 
 class OrderMessage(models.Model):

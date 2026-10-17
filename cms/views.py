@@ -112,6 +112,54 @@ class RFQView(AuditedMixin, ModelViewSet):
         
         return Response({"Error":"Bad Request", "fields": serial.errors} , status=status.HTTP_400_BAD_REQUEST)
 
+    @action(detail=True, methods=["get", "post"], url_path="documents")
+    def documents(self, request, pk=None):
+        """PDFs for the customer to download (invoice, packing list, airway bill...)."""
+        from . import documents as docs
+        from .models import OrderDocument
+        rfq = self.get_object()
+        if request.method == "GET":
+            return Response(tracking.documents_json(rfq))
+        file = request.FILES.get("file")
+        if file is None:
+            return Response({"detail": "Choose a PDF file."}, status=status.HTTP_400_BAD_REQUEST)
+        problem = docs.check(file)
+        if problem:
+            return Response({"detail": problem}, status=status.HTTP_400_BAD_REQUEST)
+        if rfq.documents.count() >= 20:
+            return Response({"detail": "An order can have up to 20 documents."}, status=status.HTTP_400_BAD_REQUEST)
+        kind = str(request.data.get("kind", "other"))
+        if kind not in OrderDocument.Kind.values:
+            kind = "other"
+        title = str(request.data.get("title", "")).strip()[:120] or dict(OrderDocument.Kind.choices)[kind]
+        file_id = docs.store(file)
+        if not file_id:
+            return Response({"detail": "The file could not be saved. Please try again."}, status=status.HTTP_502_BAD_GATEWAY)
+        doc = OrderDocument.objects.create(rfq=rfq, kind=kind, title=title, file_id=file_id, size=file.size, uploaded_by=request.user)
+        log(request, A.CREATED, "order document", rfq.reference, f"added {title}")
+        return Response(tracking.documents_json(rfq)[-1] | {"id": str(doc.pk)}, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["get", "delete"], url_path=r"documents/(?P<doc_id>[0-9a-fA-F-]{32,36})")
+    def document_item(self, request, pk=None, doc_id=None):
+        from django.http import HttpResponse
+        from . import documents as docs
+        rfq = self.get_object()
+        doc = rfq.documents.filter(pk=doc_id).first()
+        if doc is None:
+            return Response({"detail": "Document not found."}, status=status.HTTP_404_NOT_FOUND)
+        if request.method == "DELETE":
+            docs.delete(doc.file_id)
+            log(request, A.DELETED, "order document", rfq.reference, f"removed {doc.title}")
+            doc.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        data = docs.fetch(doc.file_id)
+        if not data:
+            return Response({"detail": "The file could not be loaded."}, status=status.HTTP_502_BAD_GATEWAY)
+        response = HttpResponse(data, content_type="application/pdf")
+        response["Content-Disposition"] = f'attachment; filename="{docs.filename(doc.title)}"'
+        response["Cache-Control"] = "private, no-store"
+        return response
+
     @action(detail=True, methods=["get", "post"], url_path="messages")
     def messages(self, request, pk=None):
         """The thread with the customer. Reading it marks the customer's messages as read."""
@@ -160,6 +208,14 @@ class RFQView(AuditedMixin, ModelViewSet):
                 delivery = _dt.date.fromisoformat(str(delivery))
             except ValueError:
                 errors["estimated_delivery"] = "Use the date format YYYY-MM-DD."
+        for key, limit in (("carrier", 120), ("tracking_number", 120)):
+            if len(str(d.get(key, "")).strip()) > limit:
+                errors[key] = f"Keep it under {limit} characters."
+        link = str(d.get("tracking_url", "")).strip()
+        if link:
+            from urllib.parse import urlparse
+            if len(link) > 500 or urlparse(link).scheme not in ("http", "https") or not urlparse(link).netloc:
+                errors["tracking_url"] = "Use a full web address starting with https://."
         return d, errors, delivery
 
     @action(detail=True, methods=["get", "post"], url_path="updates")
@@ -171,6 +227,11 @@ class RFQView(AuditedMixin, ModelViewSet):
         if errors:
             return Response({"detail": " ".join(errors.values()), "fields": errors}, status=status.HTTP_400_BAD_REQUEST)
         before = rfq.status
+        shipment = {k: str(d.get(k, "")).strip() for k in ("carrier", "tracking_number", "tracking_url") if str(d.get(k, "")).strip()}
+        if shipment:  # saved first, so the email for this update carries them
+            for k, v in shipment.items():
+                setattr(rfq, k, v)
+            rfq.save(update_fields=list(shipment))
         update = tracking.add_update(rfq, d["stage"], d["headline"], str(d.get("details", "")),
                                      str(d.get("location", "")), created_by=request.user)
         if delivery not in (None, ""):

@@ -74,6 +74,41 @@ def request_summary(rfq):
     }
 
 
+CARRIER_LINKS = [
+    ("dhl", "https://www.dhl.com/global-en/home/tracking.html?tracking-id={n}"),
+    ("fedex", "https://www.fedex.com/fedextrack/?trknbr={n}"),
+    ("ups", "https://www.ups.com/track?tracknum={n}"),
+    ("aramex", "https://www.aramex.com/track/results?ShipmentNumber={n}"),
+]
+
+
+def tracking_link(rfq):
+    """The customer's link to the carrier: the one the team typed, else one worked out for a well-known carrier."""
+    if rfq.tracking_url:
+        return rfq.tracking_url
+    from urllib.parse import quote as q
+    name = (rfq.carrier or "").lower()
+    if rfq.tracking_number:
+        for key, pattern in CARRIER_LINKS:
+            if key in name:
+                return pattern.format(n=q(rfq.tracking_number.strip()))
+    return ""
+
+
+def shipment_json(rfq):
+    """Carrier, tracking number and dates, or None until the team has added any."""
+    if not (rfq.carrier or rfq.tracking_number or rfq.tracking_url):
+        return None
+    shipped = rfq.updates.filter(stage="shipped").order_by("created_at").first()
+    return {"carrier": rfq.carrier, "tracking_number": rfq.tracking_number, "tracking_url": tracking_link(rfq),
+            "shipped_at": shipped.created_at if shipped else None, "estimated_delivery": rfq.estimated_delivery}
+
+
+def documents_json(rfq):
+    return [{"id": str(d.pk), "kind": d.kind, "kind_label": d.get_kind_display(), "title": d.title, "size": d.size,
+             "created_at": d.created_at} for d in rfq.documents.all()]
+
+
 def request_detail(rfq, admin=False):
     updates = list(rfq.updates.select_related("created_by").order_by("-created_at"))
     first_seen = {}
@@ -96,6 +131,8 @@ def request_detail(rfq, admin=False):
         "delivery_address": rfq.delivery_address,
         "quotation_reference": quotation_reference(rfq),
         "unread_messages": unread_for_team(rfq) if admin else unread_for_customer(rfq),
+        "shipment": shipment_json(rfq),
+        "documents": documents_json(rfq),
         "stages": stages,
         "updates": [
             {
@@ -281,6 +318,10 @@ def _update_parts(update):
     details = [("Request", short_title(rfq)), ("Stage", f"{STAGE_LABELS.get(update.stage, update.stage)} (step {step_of(update.stage)} of {len(STAGE_ORDER)})")]
     if update.location:
         details.append(("Where", update.location))
+    if rfq.carrier:
+        details.append(("Shipped by", rfq.carrier))
+    if rfq.tracking_number:
+        details.append(("Tracking number", rfq.tracking_number))
     if rfq.estimated_delivery:
         details.append(("Estimated delivery", f"{rfq.estimated_delivery.day} {rfq.estimated_delivery:%B %Y}"))
     return dict(subject=f"{rfq.reference}: {update.headline}", title=update.headline, paragraphs=paragraphs,

@@ -106,6 +106,7 @@ class RFQSerial(ModelSerializer):
     item_images = serializers.ListField(child=serializers.FileField(), write_only=True, required=False)
     items = SerializerMethodField(read_only=True)
     unread_messages = SerializerMethodField(read_only=True)
+    documents = SerializerMethodField(read_only=True)
     item = serializers.CharField(required=False, allow_blank=True, max_length=5000)
     
     class Meta:
@@ -117,6 +118,10 @@ class RFQSerial(ModelSerializer):
 
     def get_file_url(self , obj):
         return obj.file.url if obj.file else None
+
+    def get_documents(self, obj):
+        from . import tracking
+        return tracking.documents_json(obj) if obj.pk else []
 
     def get_unread_messages(self, obj):
         return obj.messages.filter(sender="customer", read=False).count() if obj.pk else 0
