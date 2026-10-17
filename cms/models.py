@@ -107,6 +107,31 @@ class MetaData(models.Model):
       def years_of_experience(self):
           return max(0, self.experience + (current_year() - self.experience_year))
       
+class Showcase(models.Model):
+    """Proof for the home page: photos of delivered orders, and what customers said. Real entries only, added by
+    the team in the CMS. The section stays hidden on the website until at least one is published."""
+
+    class Kind(models.TextChoices):
+        DELIVERY = "delivery", "Delivered order (photo)"
+        TESTIMONIAL = "testimonial", "Customer testimonial"
+
+    id = models.UUIDField(default=uuid4, editable=False, primary_key=True)
+    kind = models.CharField(max_length=12, choices=Kind.choices, default=Kind.DELIVERY)
+    title = models.CharField(max_length=120, blank=True)   # the caption of a photo, or a short headline
+    quote = models.TextField(max_length=600, blank=True)   # what the customer said
+    person = models.CharField(max_length=120, blank=True)
+    company = models.CharField(max_length=120, blank=True)
+    image = CloudinaryField("Showcase_image", folder="Showcase", blank=True, null=True)
+    published = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.title or self.person or str(self.id)
+
+
 class Service(models.Model):
     
     id = models.UUIDField(default=uuid4 , editable=False , primary_key=True)

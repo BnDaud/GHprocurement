@@ -1,8 +1,8 @@
 from django.shortcuts import render
-from .models import User ,Catalog, FAQ , MetaData , Service , RFQ , SentEmail , InboxMessage , STAGE_ORDER
+from .models import User ,Catalog, FAQ , MetaData , Service , RFQ , SentEmail , InboxMessage , Showcase , STAGE_ORDER
 from . import tracking
 from .references import create_sent_email
-from .serial import InboxListSerial , InboxSerial , AdminCreateSerial , AdminSerial , SentEmailListSerial , SentEmailSerial , UserSerial , CatalogSerial , MetaDataSerial , FAQSerial , ServicesSerial , RFQSerial , EmailSerial
+from .serial import InboxListSerial , InboxSerial , AdminCreateSerial , AdminSerial , SentEmailListSerial , SentEmailSerial , UserSerial , CatalogSerial , MetaDataSerial , FAQSerial , ServicesSerial , RFQSerial , EmailSerial , ShowcaseSerial
 # Create your views here.
 from rest_framework.views import APIView
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet, ViewSet
@@ -63,6 +63,18 @@ class CatalogView(AuditedMixin, ModelViewSet):
     queryset = Catalog.objects.all()
     serializer_class = CatalogSerial
     
+class ShowcaseView(AuditedMixin, ModelViewSet):
+    audit_name = "showcase entry"
+    permission_classes = [IsCMSAdminOrReadOnly]  # public can read, only admins can change
+    serializer_class = ShowcaseSerial
+
+    def get_queryset(self):
+        user = self.request.user
+        if user and user.is_authenticated and (user.is_staff or user.is_superuser):
+            return Showcase.objects.all()
+        return Showcase.objects.filter(published=True)  # visitors only ever see what is published
+
+
 class MetaDataView(AuditedMixin, ModelViewSet):
     audit_name = "site settings"
     permission_classes = [IsCMSAdminOrReadOnly]  # public can read, only admins can change
@@ -355,6 +367,7 @@ def AllData(req):  # public: feeds the customer website
     service = ServicesSerial(Service.objects.all() , many=True).data
     metadata = MetaDataSerial(MetaData.objects.all(), many=True).data
     faq = FAQSerial(FAQ.objects.all() ,many=True).data
+    showcase = ShowcaseSerial(Showcase.objects.filter(published=True), many=True).data
     tweets = tweet.getTweets()    
     
     context = {
@@ -362,6 +375,7 @@ def AllData(req):  # public: feeds the customer website
         "metadata":metadata,
         "service":service,
         "faq":faq,
+        "showcase": showcase,
         "twitter": tweets
        
     }

@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from rest_framework.serializers import ChoiceField, DecimalField, UUIDField, IntegerField, ModelSerializer , SerializerMethodField , ImageField , Serializer , CharField , EmailField ,  ListField , FileField
-from .models import User , Catalog,Service , FAQ ,MetaData , RFQ , SentEmail , InboxMessage
+from .models import User , Catalog,Service , FAQ ,MetaData , RFQ , SentEmail , InboxMessage , Showcase
 from django.contrib.auth.hashers import make_password
 from rest_framework.exceptions import ValidationError
 import os
@@ -66,6 +66,44 @@ class CatalogSerial(ModelSerializer):
     def get_featured_image_url(self, obj):
         return obj.featured_image.url if obj.featured_image else None
         
+
+class ShowcaseSerial(ModelSerializer):
+    image = ImageField(required=False, allow_null=True, write_only=True)
+    image_url = SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = Showcase
+        fields = ["id", "kind", "title", "quote", "person", "company", "image", "image_url", "published", "created_at"]
+        read_only_fields = ["created_at"]
+
+    def get_image_url(self, obj):
+        try:
+            return obj.image.url if obj.image else None
+        except ValueError:  # Cloudinary is not configured (local and test runs)
+            return None
+
+    def validate_image(self, file):
+        """Shrunk to a web-sized JPEG before it is stored."""
+        if file is None:
+            return file
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from . import images
+        try:
+            data = images.compress(file)
+        except ValueError as e:
+            raise ValidationError(str(e))
+        return SimpleUploadedFile(f"{os.path.splitext(file.name)[0] or 'photo'}.jpg", data, content_type="image/jpeg")
+
+    def validate(self, attrs):
+        kind = attrs.get("kind", getattr(self.instance, "kind", "delivery"))
+        quote = attrs.get("quote", getattr(self.instance, "quote", ""))
+        has_image = bool(attrs.get("image")) or bool(getattr(self.instance, "image", None))
+        if kind == "testimonial" and not (quote or "").strip():
+            raise ValidationError({"quote": "Write what the customer said."})
+        if kind == "delivery" and not has_image:
+            raise ValidationError({"image": "Add a photo of the delivered order."})
+        return attrs
+
 
 class MetaDataSerial(ModelSerializer):
     class Meta:
