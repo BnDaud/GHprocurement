@@ -112,6 +112,25 @@ class RFQView(AuditedMixin, ModelViewSet):
         
         return Response({"Error":"Bad Request", "fields": serial.errors} , status=status.HTTP_400_BAD_REQUEST)
 
+    @action(detail=True, methods=["get", "post"], url_path="messages")
+    def messages(self, request, pk=None):
+        """The thread with the customer. Reading it marks the customer's messages as read."""
+        from .models import OrderMessage
+        rfq = self.get_object()
+        if request.method == "GET":
+            rfq.messages.filter(sender="customer", read=False).update(read=True)
+            return Response([tracking.message_json(m, admin=True) for m in rfq.messages.select_related("author")])
+        body = str(request.data.get("body", "")).strip()
+        if not body:
+            return Response({"detail": "Write a reply first."}, status=status.HTTP_400_BAD_REQUEST)
+        if len(body) > tracking.MESSAGE_MAX:
+            return Response({"detail": f"Keep it under {tracking.MESSAGE_MAX} characters."}, status=status.HTTP_400_BAD_REQUEST)
+        m = OrderMessage.objects.create(rfq=rfq, sender="team", author=request.user, body=body, read=False)
+        rfq.messages.filter(sender="customer", read=False).update(read=True)  # answering means they were seen
+        log(request, A.CREATED, "order message", rfq.reference, "replied to the customer")
+        tracking.in_background(tracking.email_customer_message, str(m.pk))
+        return Response(tracking.message_json(m, admin=True), status=status.HTTP_201_CREATED)
+
     @action(detail=True, methods=["post"], url_path="remove-pictures")
     def remove_pictures(self, request, pk=None):
         """Delete the customer's pictures of this request now (they are also deleted after delivery)."""
@@ -198,6 +217,50 @@ class RFQView(AuditedMixin, ModelViewSet):
         log(request, A.UPDATED, "order update", f"{rfq.reference}: {update.headline}", "fields: " + ", ".join(changed) + stage_note)
         return Response(tracking.request_detail(rfq, admin=True))
     
+STALLED_DAYS = 7
+
+
+@api_view(["GET"])
+def attention(request):
+    """What a customer is waiting for, worst first: requests with no quotation yet (a quotation is promised within 48
+    hours), accepted quotations, unanswered questions, and orders that have not moved for a while."""
+    from datetime import timedelta
+    from django.db.models import Count, Max, Q
+    now = timezone.now()
+    items = []
+
+    def add(kind, rfq, title, detail, since, severity, hours=None):
+        items.append({"kind": kind, "rfq_id": str(rfq.pk), "reference": rfq.reference, "who": rfq.name, "company": rfq.company,
+                      "title": title, "detail": detail, "since": since, "severity": severity,
+                      "hours": hours if hours is not None else int((now - since).total_seconds() // 3600)})
+
+    # no quotation yet
+    for r in RFQ.objects.filter(status="received"):
+        age = (now - r.created_at).total_seconds() / 3600
+        if age >= 24:
+            add("quote", r, "Quotation not sent yet", tracking.short_title(r), r.created_at, "red" if age >= 48 else "amber")
+    # accepted, waiting for the next step
+    for r in RFQ.objects.filter(status="confirmed"):
+        last = r.updates.order_by("-created_at").first()
+        if last and last.headline == "You accepted the quotation":
+            add("accepted", r, "Accepted: check the payment", tracking.short_title(r), last.created_at, "green")
+    # unanswered questions
+    for r in RFQ.objects.annotate(n=Count("messages", filter=Q(messages__sender="customer", messages__read=False)),
+                                  last=Max("messages__created_at", filter=Q(messages__sender="customer", messages__read=False))).filter(n__gt=0):
+        latest = r.messages.filter(sender="customer", read=False).order_by("-created_at").first()
+        add("question", r, "Customer asked a question" if r.n == 1 else f"{r.n} unanswered questions", (latest.body[:90] if latest else ""), r.last, "amber")
+    # nothing has moved for a while (from Confirmed to before Delivered)
+    cutoff = now - timedelta(days=STALLED_DAYS)
+    for r in RFQ.objects.exclude(status__in=["received", "quoted", "delivered"]):
+        last = r.updates.order_by("-created_at").first()
+        if last and last.created_at < cutoff and not (r.status == "confirmed" and last.headline == "You accepted the quotation"):
+            days = (now - last.created_at).days
+            add("stalled", r, f"No update for {days} days", f"{tracking.short_title(r)} · {tracking.STAGE_LABELS.get(r.status, r.status)}", last.created_at, "amber")
+    rank = {"red": 0, "amber": 1, "green": 2}
+    items.sort(key=lambda i: (rank[i["severity"]], i["since"]))
+    return Response({"count": len(items), "items": items[:30]})
+
+
 @api_view(["GET"])
 def getTotalView(req):
     

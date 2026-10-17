@@ -48,6 +48,8 @@ class Catalog(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     
     price = models.DecimalField(max_digits=10 , decimal_places=2 , default=Decimal("1.00"))
+    # weight of ONE unit in kilograms: the rough cost estimator on the public site needs it (blank = not in the estimator)
+    weight_kg = models.DecimalField(max_digits=8, decimal_places=3, null=True, blank=True)
     
     
     def __str__(self):
@@ -90,6 +92,16 @@ class MetaData(models.Model):
           ("AED", "UAE dirham (AED)"),
       ]
       currency = models.CharField(max_length=3, choices=CURRENCIES, default="USD")
+
+      # the number the "chat on WhatsApp" buttons open; blank = use the phone number above
+      whatsapp_number = models.CharField(max_length=55, blank=True)
+
+      # the rough cost estimator on the public site: shipping rate per kilogram (in the currency above), the
+      # usual duty and clearance as a percentage, and how wide the range is. No rate set = no estimator.
+      air_rate_per_kg = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+      sea_rate_per_kg = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+      duty_percent = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+      estimate_range_percent = models.PositiveSmallIntegerField(default=15)
 
       @property
       def years_of_experience(self):
@@ -174,6 +186,30 @@ class RFQItem(models.Model):
 
     def __str__(self):
         return f"{self.quantity} x {self.description}"
+
+
+class OrderMessage(models.Model):
+    """A question or reply on one order. The customer and the team write to each other here and each side is
+    emailed. `read` means the OTHER side has opened it."""
+
+    class Sender(models.TextChoices):
+        CUSTOMER = "customer", "Customer"
+        TEAM = "team", "Team"
+
+    id = models.UUIDField(default=uuid4, primary_key=True, editable=False)
+    rfq = models.ForeignKey(RFQ, related_name="messages", on_delete=models.CASCADE)
+    sender = models.CharField(max_length=10, choices=Sender.choices)
+    author = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    body = models.TextField(max_length=2000)
+    read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["created_at"]
+        indexes = [models.Index(fields=["rfq", "created_at"])]
+
+    def __str__(self):
+        return f"{self.sender}: {self.body[:40]}"
 
 
 class RFQUpdate(models.Model):

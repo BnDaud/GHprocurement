@@ -15,7 +15,7 @@ from rest_framework.views import APIView
 from . import tracking
 from .audit import A, log
 from .authentication import CUSTOMER_MAX_AGE, make_customer_token
-from .models import RFQ, User
+from .models import OrderMessage, RFQ, User
 
 
 class IsCustomer(BasePermission):
@@ -127,6 +127,42 @@ class CustomerRequestDetailView(APIView):
         if rfq is None:
             return _bad("Request not found.", status.HTTP_404_NOT_FOUND)
         return Response(tracking.request_detail(rfq))
+
+
+class CustomerMessagesView(APIView):
+    """The customer's thread with the team on one order: read it (this marks the team's replies as read) or write."""
+    permission_classes = [IsCustomer]
+
+    def _rfq(self, request, pk):
+        try:
+            return RFQ.objects.filter(user=request.user, pk=uuid.UUID(str(pk))).first()  # only their own
+        except ValueError:
+            return None
+
+    def get(self, request, pk):
+        rfq = self._rfq(request, pk)
+        if rfq is None:
+            return _bad("Request not found.", status.HTTP_404_NOT_FOUND)
+        rfq.messages.filter(sender="team", read=False).update(read=True)
+        return Response([tracking.message_json(m) for m in rfq.messages.all()])
+
+    def post(self, request, pk):
+        from datetime import timedelta
+        from django.utils import timezone
+        rfq = self._rfq(request, pk)
+        if rfq is None:
+            return _bad("Request not found.", status.HTTP_404_NOT_FOUND)
+        body = str(request.data.get("body", "")).strip()
+        if not body:
+            return _bad("Write your question first.")
+        if len(body) > tracking.MESSAGE_MAX:
+            return _bad(f"Keep it under {tracking.MESSAGE_MAX} characters.")
+        since = timezone.now() - timedelta(hours=1)
+        if OrderMessage.objects.filter(rfq__user=request.user, sender="customer", created_at__gte=since).count() >= tracking.CUSTOMER_MESSAGES_PER_HOUR:
+            return _bad("That is a lot of messages. Please wait a little and try again.", status.HTTP_429_TOO_MANY_REQUESTS)
+        m = OrderMessage.objects.create(rfq=rfq, sender="customer", body=body)
+        tracking.in_background(tracking.email_team_message, str(m.pk))
+        return Response(tracking.message_json(m), status=status.HTTP_201_CREATED)
 
 
 class CustomerAcceptQuoteView(APIView):

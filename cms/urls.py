@@ -1,11 +1,11 @@
 from rest_framework.routers import DefaultRouter
 from django.http import HttpResponse
-from .views import InboxView , AdminView , SentEmailView , UserView ,  CatalogView , getTotalView , AllData , ServicesView, FAQView ,  EmailView,MetaDataView , RFQView , AuditView , health
+from .views import InboxView , AdminView , SentEmailView , UserView ,  CatalogView , getTotalView , AllData , ServicesView, FAQView ,  EmailView,MetaDataView , RFQView , AuditView , health, attention
 from .auth_views import (LoginView, LoginMfaView, MeView, ChangePasswordView, MfaSetupView,
                          MfaConfirmView, MfaDisableView, MfaRecoveryCodesView)
 from .inbound import postmark_inbound
 from .customer_views import (CustomerLoginView, RequestLinkView, SetPasswordView, CustomerMeView,
-                             CustomerRequestsView, CustomerRequestDetailView, GuestTrackView, CustomerUpdateEmailView, GuestUpdateEmailView, CustomerAcceptQuoteView)
+                             CustomerRequestsView, CustomerRequestDetailView, GuestTrackView, CustomerUpdateEmailView, GuestUpdateEmailView, CustomerAcceptQuoteView, CustomerMessagesView)
 from django.urls import path , include
 
 
@@ -28,6 +28,7 @@ routes.register("audit", AuditView , basename="audit")
 
 urlpatterns = [path("health/", health, name="health"),
 path("gettotal" , getTotalView , name = "getTotal"),
+path("attention/", attention),
 path("alldata/" , AllData , name = "alldata" ), 
 path("emails/" ,EmailView.as_view() ),
   path("inbound/<str:secret>/", postmark_inbound),
@@ -38,6 +39,7 @@ path("emails/" ,EmailView.as_view() ),
   path("customer/requests/", CustomerRequestsView.as_view()),
   path("customer/requests/<str:pk>/", CustomerRequestDetailView.as_view()),
   path("customer/requests/<str:pk>/accept/", CustomerAcceptQuoteView.as_view()),
+  path("customer/requests/<str:pk>/messages/", CustomerMessagesView.as_view()),
   path("customer/requests/<str:pk>/updates/<str:update_id>/email/", CustomerUpdateEmailView.as_view()),
   path("customer/track/email/", GuestUpdateEmailView.as_view()),
   path("customer/track/", GuestTrackView.as_view()),

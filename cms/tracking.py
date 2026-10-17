@@ -11,7 +11,7 @@ from django.db import connection
 from django.template.loader import render_to_string
 from django.utils import timezone
 
-from .models import RFQ, RFQUpdate, RFQStage, STAGE_ORDER, User
+from .models import RFQ, RFQUpdate, RFQStage, OrderMessage, STAGE_ORDER, User
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +95,7 @@ def request_detail(rfq, admin=False):
         "item": rfq.item,
         "delivery_address": rfq.delivery_address,
         "quotation_reference": quotation_reference(rfq),
+        "unread_messages": unread_for_team(rfq) if admin else unread_for_customer(rfq),
         "stages": stages,
         "updates": [
             {
@@ -297,6 +298,53 @@ def email_update(update_id):
         RFQUpdate.objects.filter(pk=update.pk).update(emailed=True)
     except Exception:  # noqa: BLE001
         logger.exception("could not send the update email for %s", update_id)
+
+
+# ---------------------------------------------------------------- messages on an order
+MESSAGE_MAX = 2000
+CUSTOMER_MESSAGES_PER_HOUR = 30
+
+
+def message_json(m, admin=False):
+    out = {"id": str(m.pk), "sender": m.sender, "body": m.body, "created_at": m.created_at, "read": m.read}
+    if admin and m.sender == "team":
+        out["author"] = (m.author.email or m.author.username) if m.author else ""
+    return out
+
+
+def unread_for_customer(rfq):
+    return rfq.messages.filter(sender="team", read=False).count()
+
+
+def unread_for_team(rfq):
+    return rfq.messages.filter(sender="customer", read=False).count()
+
+
+def email_team_message(message_id):
+    """Tell the team a customer wrote on an order."""
+    try:
+        from .task import company_info
+        m = OrderMessage.objects.select_related("rfq").get(pk=message_id)
+        rfq = m.rfq
+        _send(company_info()["contact_email"], f"{rfq.reference}: {rfq.name} sent a message", "A customer sent a message",
+              [f"{rfq.name} ({rfq.company}) wrote on {short_title(rfq)}:", m.body[:600] + ("..." if len(m.body) > 600 else "")],
+              "Reply in the CMS", f"https://cms.ghprocurement.com/orders/{rfq.pk}", "", [("Customer", rfq.email), ("Order", rfq.reference)],
+              label="New message", reference=rfq.reference)
+    except Exception:  # noqa: BLE001
+        logger.exception("could not tell the team about message %s", message_id)
+
+
+def email_customer_message(message_id):
+    """Tell the customer the team replied."""
+    try:
+        m = OrderMessage.objects.select_related("rfq").get(pk=message_id)
+        rfq = m.rfq
+        _send(rfq.email, f"{rfq.reference}: a reply from GH Procurement", "You have a reply",
+              [f"Hello {_first_name(rfq)}, we replied to your question about {short_title(rfq)}:", m.body[:600] + ("..." if len(m.body) > 600 else "")],
+              "Read and reply", f"{site_url()}/account/{rfq.pk}", "", [("Order", rfq.reference)],
+              label="Message from us", reference=rfq.reference)
+    except Exception:  # noqa: BLE001
+        logger.exception("could not email the reply %s", message_id)
 
 
 def email_staff_accepted(rfq_id):
