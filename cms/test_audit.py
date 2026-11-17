@@ -184,3 +184,36 @@ class ReadingTheTrail(AuditBase):
         with mock.patch("cms.audit.AuditLog.objects.create", side_effect=RuntimeError("db down")):
             r = self.super.post("/api/faqs/", {"question": "q", "answer": "a"}, format="json")
         self.assertEqual(r.status_code, 201)
+
+
+class EmailCopies(AuditBase):
+    def send(self, **extra):
+        with mock.patch("cms.views.threading.Thread"):
+            return self.super.post("/api/emails/", {"kind": "outreach", "recipient": "client@x.com", "subject": "Hi",
+                                                    "title": "Hi", "body": "hello", **extra}, format="multipart")
+
+    def test_cc_and_bcc_are_kept_without_repeats_or_the_main_recipient(self):
+        from .models import SentEmail
+        r = self.send(cc=["a@x.com", "A@x.com", "client@x.com"], bcc=["b@x.com", "a@x.com"])
+        self.assertEqual(r.status_code, 200, r.data)
+        row = SentEmail.objects.get()
+        self.assertEqual(row.cc, ["a@x.com"])
+        self.assertEqual(row.bcc, ["b@x.com"])
+
+    def test_bad_address_is_refused(self):
+        self.assertEqual(self.send(cc=["not-an-email"]).status_code, 400)
+
+    def test_message_carries_cc_and_bcc(self):
+        from .task import build_email
+        m = build_email({"title": "t", "subject": "s", "body": "b", "recipient": "client@x.com",
+                         "cc": ["a@x.com"], "bcc": ["b@x.com"]})
+        self.assertEqual(m.to, ["client@x.com"])
+        self.assertEqual(m.cc, ["a@x.com"])
+        self.assertEqual(m.bcc, ["b@x.com"])
+
+    def test_a_draft_keeps_cc_and_bcc(self):
+        from .models import SentEmail
+        r = self.super.post("/api/emails/", {"save_draft": "1", "recipient": "c@x.com", "cc": ["a@x.com", "b@x.com"], "bcc": ["z@x.com"]}, format="multipart")
+        self.assertEqual(r.status_code, 200, r.data)
+        row = SentEmail.objects.get()
+        self.assertEqual((row.cc, row.bcc), (["a@x.com", "b@x.com"], ["z@x.com"]))

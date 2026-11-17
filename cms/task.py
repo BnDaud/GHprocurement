@@ -167,6 +167,8 @@ def build_email(data):
         body="\n".join(text_lines),
         from_email="GH Procurement <info@ghprocurement.com>",
         to=[data["recipient"]],
+        cc=data.get("cc") or [],
+        bcc=data.get("bcc") or [],
     )
     email.attach_alternative(html_content, "text/html")
 

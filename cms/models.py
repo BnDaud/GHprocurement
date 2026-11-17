@@ -96,6 +96,10 @@ class MetaData(models.Model):
       # the number the "chat on WhatsApp" buttons open; blank = use the phone number above
       whatsapp_number = models.CharField(max_length=55, blank=True)
 
+      # "How to use" videos (a YouTube link). The first shows on the public site, the second only inside the CMS.
+      site_video_url = models.URLField(max_length=300, blank=True)
+      cms_video_url = models.URLField(max_length=300, blank=True)
+
       # the rough cost estimator on the public site: shipping rate per kilogram (in the currency above), the
       # usual duty and clearance as a percentage, and how wide the range is. No rate set = no estimator.
       air_rate_per_kg = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
@@ -311,6 +315,8 @@ class SentEmail(models.Model):
     reference_number = models.PositiveIntegerField(null=True, blank=True)
     recipient = models.EmailField(blank=True)  # a draft may not have one yet
     recipient_name = models.CharField(max_length=200, blank=True)
+    cc = models.JSONField(default=list, blank=True)
+    bcc = models.JSONField(default=list, blank=True)
     subject = models.CharField(max_length=200, blank=True)
     title = models.CharField(max_length=200, blank=True)
     body = models.TextField(blank=True)

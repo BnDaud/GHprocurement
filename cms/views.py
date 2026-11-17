@@ -392,7 +392,7 @@ class EmailView(APIView):
         serializer.is_valid(raise_exception=True)
         d = serializer.validated_data
         fields = dict(
-            kind=d["kind"], recipient=d["recipient"].strip(), recipient_name=d["recipient_name"], subject=d["subject"],
+            kind=d["kind"], recipient=d["recipient"].strip(), recipient_name=d["recipient_name"], cc=d.get("cc", []), bcc=d.get("bcc", []), subject=d["subject"],
             title=d["title"], body=d["body"], valid_days=d["valid_days"] if d["kind"] == "rfq_reply" else None,
             rfq=d["rfq"], draft={"items": d["items"], "currency": d["currency"], "shipping": d["shipping"], "vat_percent": d["vat_percent"]},
         )
@@ -421,6 +421,8 @@ class EmailView(APIView):
             validated_data["kind"],
             recipient=validated_data["recipient"],
             recipient_name=validated_data.get("recipient_name", ""),
+            cc=validated_data.get("cc", []),
+            bcc=validated_data.get("bcc", []),
             subject=validated_data["subject"],
             title=validated_data["title"],
             body=validated_data["body"],
@@ -437,7 +439,7 @@ class EmailView(APIView):
             SentEmail.objects.filter(pk=validated_data["draft_id"], status=SentEmail.Status.DRAFT).delete()
         order = validated_data.get("rfq")
         log(request, A.EMAIL_SENT, "email", validated_data["subject"],
-            f"to {validated_data['recipient']}" + (f", {record.reference}" if record.reference else "")
+            f"to {validated_data['recipient']}" + (f", cc {len(validated_data['cc'])}" if validated_data.get("cc") else "") + (f", bcc {len(validated_data['bcc'])}" if validated_data.get("bcc") else "") + (f", {record.reference}" if record.reference else "")
             + (f", total {validated_data['quote']['total_text']}" if validated_data.get("quote") else "")
             + (f", for order {order.reference}" if order else ""))
         if order:

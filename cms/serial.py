@@ -320,6 +320,9 @@ def _thumbnail(f):
     return out.getvalue()
 
 
+MAX_COPIES = 10  # most Cc and most Bcc addresses on one email
+
+
 class EmailSerial(Serializer):
     body = CharField(max_length = 5000 , required = True)
     subject = CharField(max_length = 200 , required = True)
@@ -399,7 +402,20 @@ class EmailSerial(Serializer):
             if found is None:
                 raise ValidationError({"rfq": "That order was not found."})
             attrs["rfq"] = found
+        # copies: nobody gets two copies (drop repeats, case-insensitive, and anyone already in "to")
+        seen = {attrs["recipient"].lower()}
+        for key in ("cc", "bcc"):
+            kept = []
+            for address in attrs.get(key, []):
+                if address.lower() not in seen:
+                    seen.add(address.lower())
+                    kept.append(address)
+            attrs[key] = kept
         return attrs
+
+    # copies: everyone sees cc; bcc recipients are hidden from the others
+    cc = ListField(child=EmailField(), required=False, allow_empty=True, max_length=MAX_COPIES)
+    bcc = ListField(child=EmailField(), required=False, allow_empty=True, max_length=MAX_COPIES)
 
     attachments = ListField(
         child=FileField(),
@@ -448,6 +464,8 @@ class DraftSerial(Serializer):
     kind = ChoiceField(choices=["outreach", "rfq_reply"], required=False, default="outreach")
     recipient = CharField(max_length=254, required=False, allow_blank=True, default="")
     recipient_name = CharField(max_length=200, required=False, allow_blank=True, default="")
+    cc = ListField(child=CharField(max_length=254), required=False, allow_empty=True, max_length=MAX_COPIES)
+    bcc = ListField(child=CharField(max_length=254), required=False, allow_empty=True, max_length=MAX_COPIES)
     subject = CharField(max_length=200, required=False, allow_blank=True, default="")
     title = CharField(max_length=200, required=False, allow_blank=True, default="")
     body = CharField(max_length=5000, required=False, allow_blank=True, default="")
@@ -493,7 +511,7 @@ class SentEmailListSerial(ModelSerializer):
 
     class Meta:
         model = SentEmail
-        fields = ["id", "reference", "kind", "recipient", "recipient_name", "subject",
+        fields = ["id", "reference", "kind", "recipient", "recipient_name", "cc", "bcc", "subject",
                   "valid_days", "attachments_count", "attachments", "status",
                   "created_at", "sent_at", "order_reference", "total"]
 
