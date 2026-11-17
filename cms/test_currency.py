@@ -22,7 +22,8 @@ class PriceCurrency(AdminBase):
     def test_an_admin_can_change_it_and_the_public_sees_it(self):
         body = {"metaIntro": "a", "metaDescription": "b", "email": "x@y.com", "phone": "1", "office": "o",
                 "ordersCompleted": 1, "suppliers": 1, "experience": 1, "currency": "NGN"}
-        r = self.regular_client.put(f"/api/metadata/{self.meta.pk}/", body, format="json")
+        self.assertEqual(self.regular_client.put(f"/api/metadata/{self.meta.pk}/", body, format="json").status_code, 403)  # settings: super admin only
+        r = self.super.put(f"/api/metadata/{self.meta.pk}/", body, format="json")
         self.assertEqual(r.status_code, 200, r.data)
         with mock.patch("cms.views.FetchTwiter") as tw:
             tw.return_value.getTweets.return_value = {}

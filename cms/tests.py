@@ -134,13 +134,10 @@ class TokenUse(AuthTestBase):
     def test_token_unlocks_the_cms(self):
         c = self.client_for(self.token())
         self.assertEqual(c.get("/api/gettotal").status_code, 200)
-        self.assertEqual(c.get("/api/user/").status_code, 200)
         self.assertEqual(c.get("/api/auth/me/").data["email"], ADMIN_EMAIL)
-        r = c.post("/api/services/", {"title": "Sourcing", "description": "We source"}, format="json")
-        self.assertEqual(r.status_code, 201)
-        sid = r.data["id"]
-        self.assertEqual(c.patch(f"/api/services/{sid}/", {"title": "Sourcing 2"}, format="json").status_code, 200)
-        self.assertEqual(c.delete(f"/api/services/{sid}/").status_code, 204)
+        # customer accounts, site content and settings are for the super admin only
+        self.assertEqual(c.get("/api/user/").status_code, 403)
+        self.assertEqual(c.post("/api/services/", {"title": "Sourcing", "description": "We source"}, format="json").status_code, 403)
 
     def test_tampered_token_rejected(self):
         t = self.token()

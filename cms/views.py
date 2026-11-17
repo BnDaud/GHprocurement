@@ -18,7 +18,7 @@ import os , threading
 from django.conf import settings
 from django.db.models import Q
 from django.core.exceptions import ValidationError as DjangoValidationError
-from .permissions import IsCMSAdminOrReadOnly, IsSuperAdmin, is_super_admin
+from .permissions import IsCMSAdminOrReadOnly, IsSuperAdmin, IsSuperAdminOrReadOnly, is_super_admin
 from .audit import AuditedMixin, label_of, log, A
 from .models import AuditLog
 
@@ -28,6 +28,7 @@ class UserView(AuditedMixin, ModelViewSet):
     are managed under /api/admins/ by a super admin."""
 
     audit_name = "customer account"
+    permission_classes = [IsSuperAdmin]  # customers' details: super admin only
     serializer_class = UserSerial
     queryset = User.objects.filter(is_staff=False, is_superuser=False)
 
@@ -77,19 +78,19 @@ class ShowcaseView(AuditedMixin, ModelViewSet):
 
 class MetaDataView(AuditedMixin, ModelViewSet):
     audit_name = "site settings"
-    permission_classes = [IsCMSAdminOrReadOnly]  # public can read, only admins can change
+    permission_classes = [IsSuperAdminOrReadOnly]  # public can read, only the super admin can change
     queryset = MetaData.objects.all()
     serializer_class = MetaDataSerial
     
 class FAQView(AuditedMixin, ModelViewSet):
     audit_name = "FAQ"
-    permission_classes = [IsCMSAdminOrReadOnly]  # public can read, only admins can change
+    permission_classes = [IsSuperAdminOrReadOnly]  # public can read, only the super admin can change
     queryset = FAQ.objects.all()
     serializer_class = FAQSerial
     
 class ServicesView(AuditedMixin, ModelViewSet):
     audit_name = "service"
-    permission_classes = [IsCMSAdminOrReadOnly]  # public can read, only admins can change
+    permission_classes = [IsSuperAdminOrReadOnly]  # public can read, only the super admin can change
     queryset = Service.objects.all()
     serializer_class = ServicesSerial
     

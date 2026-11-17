@@ -46,3 +46,12 @@ class IsSuperAdmin(IsCMSAdmin):
 
     def has_permission(self, request, view):
         return super().has_permission(request, view) and is_super_admin(request.user)
+
+
+class IsSuperAdminOrReadOnly(IsSuperAdmin):
+    """Anyone may read (the public site shows this content); only a super admin may change it."""
+
+    def has_permission(self, request, view):
+        if request.method in SAFE_METHODS:
+            return True
+        return super().has_permission(request, view)

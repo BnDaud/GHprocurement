@@ -75,8 +75,9 @@ class ChangesAreRecorded(AuditBase):
         self.assertEqual(deleted.target_label, "Sourcing")
 
     def test_a_regular_admin_is_recorded_under_their_own_email(self):
-        self.regular_client.post("/api/faqs/", {"question": "Do you ship?", "answer": "Yes"}, format="json")
-        self.assertEqual(self.one(action="created", target_type="FAQ").actor_email, "regular@x.com")
+        with mock.patch("cms.views.threading.Thread"):
+            self.regular_client.post("/api/emails/", {"kind": "outreach", "recipient": "c@x.com", "subject": "Hi", "title": "Hi", "body": "b"}, format="multipart")
+        self.assertEqual(self.one(action="email_sent").actor_email, "regular@x.com")
 
     def test_refused_changes_leave_no_entry(self):
         before = AuditLog.objects.count()
@@ -174,9 +175,10 @@ class ReadingTheTrail(AuditBase):
 
     def test_entry_survives_the_account_being_deleted(self):
         r = self.add_admin()
-        self.client_for(make_token(User.objects.get(email="new.admin@x.com"))).post("/api/faqs/", {"question": "q", "answer": "a"}, format="json")
+        with mock.patch("cms.views.threading.Thread"):
+            self.client_for(make_token(User.objects.get(email="new.admin@x.com"))).post("/api/emails/", {"kind": "outreach", "recipient": "c@x.com", "subject": "Hi", "title": "Hi", "body": "b"}, format="multipart")
         self.super.delete(f"/api/admins/{r.data['id']}/")
-        e = self.one(action="created", target_type="FAQ")
+        e = self.one(action="email_sent")
         self.assertIsNone(e.actor)
         self.assertEqual(e.actor_email, "new.admin@x.com")
 

@@ -156,7 +156,8 @@ class AddingAnAdmin(AdminBase):
         self.add_admin()
         c = self.client_for(self.login("new.admin@x.com", NEW_PASSWORD).data["token"])
         self.assertEqual(c.get("/api/gettotal").status_code, 200)
-        self.assertEqual(c.post("/api/services/", {"title": "t", "description": "d"}, format="json").status_code, 201)
+        self.assertEqual(c.post("/api/services/", {"title": "t", "description": "d"}, format="json").status_code, 403)  # site content: super admin only
+        self.assertEqual(c.get("/api/user/").status_code, 403)
         self.assertEqual(c.get("/api/admins/").status_code, 403)
         self.assertEqual(self.add_admin(c, email="third@x.com").status_code, 403)
         self.assertEqual(c.delete(f"/api/admins/{self.admin.pk}/").status_code, 403)
