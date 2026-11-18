@@ -27,7 +27,7 @@ class AdminBase(AuthTestBase):
         self.regular_client = self.client_for(make_token(self.regular))
 
     def add_admin(self, client=None, **extra):
-        data = {"email": "new.admin@x.com", "password": NEW_PASSWORD, "first_name": "Nia"}
+        data = {"email": "new.admin@x.com", "password": NEW_PASSWORD, "first_name": "Nia", "designation": "Administrator", "role": "admin"}
         data.update(extra)
         return (client or self.super).post("/api/admins/", data, format="json")
 

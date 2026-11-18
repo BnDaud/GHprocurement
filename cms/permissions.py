@@ -1,4 +1,5 @@
 from django.conf import settings
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import BasePermission, SAFE_METHODS
 
 
@@ -27,12 +28,18 @@ class IsCMSAdmin(BasePermission):
 
     def has_permission(self, request, view):
         user = request.user
-        return bool(
+        allowed = bool(
             user
             and user.is_authenticated
             and user.is_active
             and (user.is_staff or user.is_superuser)
         )
+        if allowed and getattr(settings, "CMS_REQUIRE_MFA", False) and not getattr(view, "mfa_exempt", False):
+            from . import mfa
+            if not mfa.is_enabled(user):
+                # signed in, but two-step verification was never set up: nothing works until it is
+                raise PermissionDenied({"detail": "Set up two-step verification to continue.", "code": "mfa_setup_required"})
+        return allowed
 
 
 class IsCMSAdminOrReadOnly(IsCMSAdmin):

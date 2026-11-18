@@ -20,6 +20,7 @@ REST_FRAMEWORK = {  # noqa: F405
     **REST_FRAMEWORK,  # noqa: F405
     "DEFAULT_THROTTLE_RATES": {"login": "1000/min", "password": "1000/min"},
 }
+CMS_REQUIRE_MFA = os.environ.get("TEST_REQUIRE_MFA") == "1"  # off for the tests and local checks; test_mfa_required switches it on itself
 PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]  # fast tests only
 
 if os.environ.get("TEST_LOCMEM_EMAIL"):  # local checks that must not send real mail

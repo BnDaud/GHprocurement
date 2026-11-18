@@ -20,6 +20,25 @@ MFA_STEP_SALT = "cms-mfa-step"
 MFA_STEP_MAX_AGE = 5 * 60  # five minutes to type the code after the password
 
 
+# A computer that finished a full sign-in (password and authenticator code) is trusted for 3 hours, so signing in again
+# there, for example after being signed out for inactivity, does not ask for the code again. The token is held by that
+# browser only, names the account and its authenticator, and stops working when the password or the authenticator changes.
+TRUST_SALT = "cms-trusted-computer"
+TRUST_MAX_AGE = 60 * 60 * 3
+
+
+def make_trust_token(user, device):
+    return signing.dumps({"uid": str(user.pk), "mid": device.pk, "fp": user.password[-16:]}, salt=TRUST_SALT)
+
+
+def is_trusted_computer(user, device, token):
+    try:
+        data = signing.loads(str(token or ""), salt=TRUST_SALT, max_age=TRUST_MAX_AGE)
+    except signing.BadSignature:
+        return False
+    return data.get("uid") == str(user.pk) and data.get("mid") == device.pk and data.get("fp") == user.password[-16:]
+
+
 def _user_payload(user):
     return {
         "id": str(user.pk),
@@ -76,6 +95,12 @@ class LoginView(APIView):
             log(request, A.SIGN_IN_FAILED, "", "", "wrong password" if known else "unknown email", actor=known)
             return invalid
 
+        device = mfa.get_device(user)
+        if device and is_trusted_computer(user, device, request.data.get("device_token")):
+            update_last_login(None, user)
+            log(request, A.SIGN_IN, detail="trusted computer (two-step not asked)", actor=user)
+            return Response({**_session(user), "trusted_computer": True})
+
         if mfa.is_enabled(user):
             # password is right, but no session yet: the app code comes next
             step_token = signing.dumps({"uid": str(user.pk)}, salt=MFA_STEP_SALT)
@@ -126,10 +151,12 @@ class LoginMfaView(APIView):
         device.refresh_from_db()
         update_last_login(None, user)
         log(request, A.SIGN_IN, detail="two-step recovery code" if used == "recovery" else "two-step", actor=user)
-        return Response(_session(user, used_recovery_code=used == "recovery", recovery_codes_left=len(device.recovery_hashes)))
+        return Response(_session(user, used_recovery_code=used == "recovery", recovery_codes_left=len(device.recovery_hashes),
+                                 device_token=make_trust_token(user, device)))
 
 
 class MeView(APIView):
+    mfa_exempt = True  # reachable before two-step verification is set up (it is how you set it up)
     permission_classes = [IsCMSAdmin]
 
     def get(self, request):
@@ -138,6 +165,7 @@ class MeView(APIView):
 
 
 class ChangePasswordView(APIView):
+    mfa_exempt = True  # reachable before two-step verification is set up (it is how you set it up)
     permission_classes = [IsCMSAdmin]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "password"
@@ -177,6 +205,7 @@ class ChangePasswordView(APIView):
 # ---------------------------------------------------------------------------
 class MfaSetupView(APIView):
     """Start setup: makes a new secret (not active until confirmed)."""
+    mfa_exempt = True  # reachable before two-step verification is set up (it is how you set it up)
 
     permission_classes = [IsCMSAdmin]
     throttle_classes = [ScopedRateThrottle]
@@ -199,6 +228,7 @@ class MfaConfirmView(APIView):
     """Finish setup by proving the app shows the right code. Returns the
     recovery codes (this one time only) and a fresh session token, because
     every older token stops working once 2FA is on."""
+    mfa_exempt = True  # reachable before two-step verification is set up (it is how you set it up)
 
     permission_classes = [IsCMSAdmin]
     throttle_classes = [ScopedRateThrottle]

@@ -567,7 +567,7 @@ class AdminView(ViewSet):
             return Response({"detail": " ".join(e.messages)}, status=status.HTTP_400_BAD_REQUEST)
 
         designation = (d.get("designation") or "").strip()
-        if designation and not Designation.objects.filter(name=designation).exists():
+        if not Designation.objects.filter(name=designation).exists():
             return Response({"detail": "Choose a position from the list."}, status=status.HTTP_400_BAD_REQUEST)
 
         # the permission level is chosen here, never taken from the job title; the default is an ordinary admin
@@ -613,7 +613,9 @@ class AdminView(ViewSet):
             target.email = d["email"].strip(); changed.append("email")
         if "designation" in d and d["designation"].strip() != target.designation:
             name = d["designation"].strip()
-            if name and not Designation.objects.filter(name=name).exists():
+            if not name:
+                return refuse("A staff member must have a position.", status.HTTP_400_BAD_REQUEST)
+            if not Designation.objects.filter(name=name).exists():
                 return refuse("Choose a position from the list.", status.HTTP_400_BAD_REQUEST)
             target.designation = name; changed.append("designation")
         if "role" in d:

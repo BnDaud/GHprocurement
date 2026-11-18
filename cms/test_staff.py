@@ -275,3 +275,25 @@ class SuggestionsAreCheap(RecipientSuggestions):
             again = self.ask("lawal").data
         self.assertEqual(first, again)
         self.assertLessEqual(len(ctx), 2)   # only the sign-in check
+
+
+class NewStaffNeedPositionAndLevel(AdminBase):
+    def test_both_are_required_when_creating(self):
+        base = {"email": "z@x.com", "password": NEW_PASSWORD, "first_name": "Zed"}
+        for missing, extra in (("both", {}), ("level", {"designation": "Administrator"}), ("position", {"role": "admin"}),
+                               ("blank position", {"designation": "", "role": "admin"}), ("bad level", {"designation": "Administrator", "role": "root"})):
+            r = self.super.post("/api/admins/", {**base, **extra}, format="json")
+            self.assertEqual(r.status_code, 400, missing)
+        self.assertFalse(User.objects.filter(email="z@x.com").exists())
+
+    def test_the_position_must_be_on_the_list(self):
+        self.assertEqual(self.add_admin(designation="Supreme Leader").status_code, 400)
+
+    def test_with_both_given_it_works_and_the_level_is_as_chosen(self):
+        r = self.add_admin(designation="Software Developer", role="super_admin", email="dev@x.com")
+        self.assertEqual((r.status_code, r.data["role"], r.data["designation"]), (201, "super_admin", "Software Developer"))
+
+    def test_an_existing_account_without_a_position_can_still_be_edited_but_not_blanked(self):
+        self.assertEqual(self.super.patch(f"/api/admins/{self.regular.pk}/", {"first_name": "Rex"}, format="json").status_code, 200)   # untouched position
+        self.super.patch(f"/api/admins/{self.regular.pk}/", {"designation": "Accountant"}, format="json")
+        self.assertEqual(self.super.patch(f"/api/admins/{self.regular.pk}/", {"designation": ""}, format="json").status_code, 400)

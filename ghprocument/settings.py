@@ -175,6 +175,9 @@ LOGGING = {
 # Who is the CMS "super admin": can add and remove other admins, and can never
 # be deleted. Comma-separated emails; the account must also be a Django
 # superuser. Change later with the CMS_SUPER_ADMIN_EMAILS environment variable.
+# Every staff account must have two-step verification. One that has not set it up can sign in, but only to set it up.
+# (Set CMS_REQUIRE_MFA=0 in the environment only in an emergency.)
+CMS_REQUIRE_MFA = os.getenv("CMS_REQUIRE_MFA", "1") != "0"
 CMS_SUPER_ADMIN_EMAILS = [
     e.strip().lower()
     for e in os.getenv("CMS_SUPER_ADMIN_EMAILS", "info@ghprocurement.com").split(",")

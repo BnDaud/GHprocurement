@@ -581,8 +581,11 @@ class AdminCreateSerial(Serializer):
     password = CharField(required=True, write_only=True, trim_whitespace=False, max_length=128)
     first_name = CharField(required=False, allow_blank=True, max_length=150, default="")
     last_name = CharField(required=False, allow_blank=True, max_length=150, default="")
-    designation = CharField(required=False, allow_blank=True, max_length=80, default="")
-    role = ChoiceField(choices=["admin", "super_admin"], required=False, default="admin")
+    # a new staff member must be given both, on purpose: a position in the company, and a permission level
+    designation = CharField(required=True, allow_blank=False, max_length=80,
+                            error_messages={"required": "Choose a position.", "blank": "Choose a position."})
+    role = ChoiceField(choices=["admin", "super_admin"], required=True,
+                       error_messages={"required": "Choose a permission level.", "invalid_choice": "Choose a permission level."})
 
 
 class AdminUpdateSerial(Serializer):
