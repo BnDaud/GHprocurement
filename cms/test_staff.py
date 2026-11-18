@@ -256,3 +256,22 @@ class AutosavedDrafts(AdminBase):
         r = self.save(kind="rfq_reply", service_charge="12", service_mode="percent", shipping="500", items=json.dumps([{"description": "x", "quantity": "1", "unit_price": "10"}]))
         d = SentEmail.objects.get(pk=r.data["id"]).draft
         self.assertEqual((d["service_charge"], d["service_mode"], d["shipping"]), ("12", "percent", "500"))
+
+
+class SuggestionsAreCheap(RecipientSuggestions):
+    def test_a_few_queries_and_the_message_text_is_never_loaded(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        with CaptureQueriesContext(connection) as ctx:
+            self.assertEqual(self.ask("lawal").status_code, 200)
+        self.assertLessEqual(len(ctx), 8)
+        self.assertFalse(any('"body"' in q["sql"] for q in ctx.captured_queries))
+
+    def test_the_same_text_again_is_answered_from_memory(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        first = self.ask("lawal").data
+        with CaptureQueriesContext(connection) as ctx:
+            again = self.ask("lawal").data
+        self.assertEqual(first, again)
+        self.assertLessEqual(len(ctx), 2)   # only the sign-in check

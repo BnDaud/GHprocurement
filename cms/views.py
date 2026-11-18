@@ -821,9 +821,13 @@ def contacts(request):
     inbox mail, and everyone it has emailed). Matches names, emails and companies; exact and starting matches first,
     then the people emailed most often."""
     from collections import Counter
+    from django.core.cache import cache
     q = (request.query_params.get("q") or "").strip().lower()
     if len(q) < 1:
         return Response([])
+    cached = cache.get(f"contacts:{q}")
+    if cached is not None:
+        return Response(cached)
     people = {}   # email -> {"email", "name", "company", "sent": n, "seen": datetime}
 
     def add(email, name="", company="", weight=0):
@@ -841,15 +845,18 @@ def contacts(request):
         add(r.email, r.name, r.company)
     for m in InboxMessage.objects.filter(Q(from_email__icontains=q) | Q(from_name__icontains=q))[:40]:
         add(m.from_email, m.from_name)
+    # who has been emailed before: the database narrows it down, and only three small columns are read (never the message)
+    sent_qs = SentEmail.objects.exclude(status=SentEmail.Status.DRAFT)
+    for rec in sent_qs.filter(Q(recipient__icontains=q) | Q(recipient_name__icontains=q)).only("recipient", "recipient_name")[:40]:
+        add(rec.recipient, rec.recipient_name)
     sent = Counter()
-    for rec in SentEmail.objects.exclude(status=SentEmail.Status.DRAFT).order_by("-created_at")[:2000]:
-        for e in [rec.recipient, *(rec.cc or []), *(rec.bcc or [])]:
-            sent[(e or "").lower()] += 1
-        if q in (rec.recipient or "").lower() or q in (rec.recipient_name or "").lower():
-            add(rec.recipient, rec.recipient_name)
-    for e, n in sent.items():
-        if q in e:
-            add(e)
+    for to, cc, bcc in sent_qs.order_by("-created_at").values_list("recipient", "cc", "bcc")[:600]:
+        for e in [to, *(cc or []), *(bcc or [])]:
+            e = (e or "").lower()
+            if e:
+                sent[e] += 1
+                if q in e:
+                    add(e)
     for e, p in people.items():
         p["sent"] = sent.get(e, 0)
 
@@ -863,4 +870,6 @@ def contacts(request):
             tier = 2
         return (tier, -p["sent"], name or email)
     out = sorted((p for p in people.values() if q in p["email"] or q in p["name"].lower() or q in p["company"].lower()), key=rank)[:8]
-    return Response([{"email": p["email"], "name": p["name"], "company": p["company"], "sent": p["sent"]} for p in out])
+    result = [{"email": p["email"], "name": p["name"], "company": p["company"], "sent": p["sent"]} for p in out]
+    cache.set(f"contacts:{q}", result, 20)
+    return Response(result)
