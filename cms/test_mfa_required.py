@@ -1,4 +1,6 @@
 """Two-step verification is compulsory for staff: without it a sign-in only reaches the setup steps."""
+import secrets
+
 import pyotp
 from django.test import override_settings
 
@@ -6,6 +8,10 @@ from .authentication import make_token
 from .models import MFADevice, User
 from .test_admins import AdminBase, NEW_PASSWORD
 from .test_mfa import NOW
+
+# made fresh for every run: nothing here is a real password, and nothing password-shaped is written in the file
+REGULAR_PASSWORD = "Pw-" + secrets.token_urlsafe(14)
+CHANGED_PASSWORD = "Pw-" + secrets.token_urlsafe(14)
 
 
 @override_settings(CMS_REQUIRE_MFA=True)
@@ -81,9 +87,10 @@ class TrustedComputer(AdminBase):
         self.clock = NOW
         patcher.start()
         self.addCleanup(patcher.stop)
+        self.regular.set_password(REGULAR_PASSWORD); self.regular.save()
         self.secret = pyotp.random_base32()
         MFADevice.objects.create(user=self.regular, secret=self.secret, confirmed=True)
-        self.creds = {"email": "regular@x.com", "password": "Regul4r-pass!!"}
+        self.creds = {"email": "regular@x.com", "password": REGULAR_PASSWORD}
 
     def full_sign_in(self):
         step = self.anon.post("/api/auth/login/", self.creds, format="json")
@@ -123,8 +130,8 @@ class TrustedComputer(AdminBase):
 
     def test_a_password_change_ends_the_trust(self):
         token = self.full_sign_in().data["device_token"]
-        self.regular.set_password("Brand-new-pass-77!"); self.regular.save()
-        r = self.anon.post("/api/auth/login/", {**self.creds, "password": "Brand-new-pass-77!", "device_token": token}, format="json")
+        self.regular.set_password(CHANGED_PASSWORD); self.regular.save()
+        r = self.anon.post("/api/auth/login/", {**self.creds, "password": CHANGED_PASSWORD, "device_token": token}, format="json")
         self.assertTrue(r.data.get("mfa_required"))
 
     def test_a_token_belongs_to_one_account(self):
