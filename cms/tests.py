@@ -15,6 +15,12 @@ ADMIN_EMAIL = "info@ghprocurement.com"
 ADMIN_PASSWORD = "Pw-" + secrets.token_urlsafe(14)
 OTHER_PASSWORD = "Pw-" + secrets.token_urlsafe(14)
 USER_PASSWORD = "Pw-" + secrets.token_urlsafe(14)
+REGULAR_PASSWORD = "Pw-" + secrets.token_urlsafe(14)   # the regular admin that several test files create
+
+
+def fresh_password():
+    """A new random password for a one-off test account."""
+    return "Pw-" + secrets.token_urlsafe(14)
 
 
 def mk(username, email, password, **extra):
@@ -116,8 +122,9 @@ class Login(AuthTestBase):
         self.assertEqual(self.login().status_code, 401)
 
     def test_superuser_can_sign_in(self):
-        mk("root", "root@x.com", "R00t-passw0rd!", is_superuser=True)
-        self.assertEqual(self.login("root@x.com", "R00t-passw0rd!").status_code, 200)
+        pw = fresh_password()
+        mk("root", "root@x.com", pw, is_superuser=True)
+        self.assertEqual(self.login("root@x.com", pw).status_code, 200)
 
     def test_login_is_throttled(self):
         with mock.patch.dict(ScopedRateThrottle.THROTTLE_RATES, {"login": "3/min"}):

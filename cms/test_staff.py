@@ -9,7 +9,7 @@ from . import quote
 from .models import Designation, InboxMessage, RFQ, SentEmail, User
 from .test_admins import AdminBase, NEW_PASSWORD
 from .test_quote import ROWS, SendingQuotes
-from .tests import mk
+from .tests import REGULAR_PASSWORD, fresh_password, mk
 
 
 class Inline:
@@ -184,7 +184,7 @@ class StaffManagement(AdminBase):
         self.assertEqual(self.regular_client.get("/api/auth/me/").data["is_super_admin"], False)
 
     def test_the_owner_account_stays_a_super_admin(self):
-        owner = mk("boss", "info2@x.com", "Passw0rd-long!!", is_staff=True, is_superuser=True, is_cms_super=True)
+        owner = mk("boss", "info2@x.com", fresh_password(), is_staff=True, is_superuser=True, is_cms_super=True)
         with self.settings(CMS_SUPER_ADMIN_EMAILS=["info2@x.com"]):
             r = self.super.patch(f"/api/admins/{owner.pk}/", {"role": "admin"}, format="json")
         self.assertEqual(r.status_code, 403)
@@ -192,7 +192,7 @@ class StaffManagement(AdminBase):
     def test_deactivating_blocks_sign_in_and_cannot_target_yourself(self):
         self.assertEqual(self.super.patch(f"/api/admins/{self.admin.pk}/", {"is_active": False}, format="json").status_code, 403)
         self.assertEqual(self.super.patch(f"/api/admins/{self.regular.pk}/", {"is_active": False}, format="json").status_code, 200)
-        self.assertEqual(self.login("regular@x.com", "Regul4r-pass!!").status_code, 401)
+        self.assertEqual(self.login("regular@x.com", REGULAR_PASSWORD).status_code, 401)
 
     def test_an_email_already_in_use_is_refused(self):
         self.assertEqual(self.super.patch(f"/api/admins/{self.regular.pk}/", {"email": "buyer@acme.com"}, format="json").status_code, 400)

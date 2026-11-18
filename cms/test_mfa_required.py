@@ -1,6 +1,4 @@
 """Two-step verification is compulsory for staff: without it a sign-in only reaches the setup steps."""
-import secrets
-
 import pyotp
 from django.test import override_settings
 
@@ -8,10 +6,10 @@ from .authentication import make_token
 from .models import MFADevice, User
 from .test_admins import AdminBase, NEW_PASSWORD
 from .test_mfa import NOW
+from .tests import REGULAR_PASSWORD, fresh_password
 
 # made fresh for every run: nothing here is a real password, and nothing password-shaped is written in the file
-REGULAR_PASSWORD = "Pw-" + secrets.token_urlsafe(14)
-CHANGED_PASSWORD = "Pw-" + secrets.token_urlsafe(14)
+CHANGED_PASSWORD = fresh_password()
 
 
 @override_settings(CMS_REQUIRE_MFA=True)

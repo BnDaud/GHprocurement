@@ -10,7 +10,7 @@ from django.utils import timezone
 from . import inbound
 from .authentication import make_token
 from .models import InboxMessage
-from .tests import AuthTestBase, mk
+from .tests import REGULAR_PASSWORD, AuthTestBase, mk
 
 SECRET = "inbox-test-secret-0123456789"
 URL = f"/api/inbound/{SECRET}/"
@@ -270,7 +270,7 @@ class InboxApi(AuthTestBase):
             self.assertEqual(len(self.c.get("/api/inbox/").data), 2)
 
     def test_a_regular_admin_can_read_it_too(self):
-        regular = mk("regular", "regular@x.com", "Regul4r-pass!!", is_staff=True)
+        regular = mk("regular", "regular@x.com", REGULAR_PASSWORD, is_staff=True)
         self.assertEqual(self.client_for(make_token(regular)).get("/api/inbox/").status_code, 200)
 
     def test_unknown_message(self):
@@ -335,7 +335,7 @@ class DeletingMail(AuthTestBase):
         self.assertEqual(InboxMessage.objects.count(), 5)
 
     def test_a_regular_admin_can_delete_too(self):
-        regular = mk("regular", "regular@x.com", "Regul4r-pass!!", is_staff=True)
+        regular = mk("regular", "regular@x.com", REGULAR_PASSWORD, is_staff=True)
         self.assertEqual(self.client_for(make_token(regular)).delete(f"/api/inbox/{self.ids['d0']}/").status_code, 204)
 
     def test_deleting_only_touches_the_cms_copy(self):

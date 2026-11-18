@@ -9,7 +9,7 @@ from rest_framework.test import APIClient
 
 from .authentication import make_token
 from .models import MFADevice, User
-from .tests import ADMIN_EMAIL, ADMIN_PASSWORD, USER_PASSWORD, AuthTestBase, mk
+from .tests import ADMIN_EMAIL, ADMIN_PASSWORD, REGULAR_PASSWORD, USER_PASSWORD, AuthTestBase, fresh_password, mk
 
 NEW_PASSWORD = "Pw-" + secrets.token_urlsafe(14)
 NOW = 1_800_000_000
@@ -23,7 +23,7 @@ class AdminBase(AuthTestBase):
         self.super = APIClient()
         self.super.credentials(HTTP_AUTHORIZATION=f"Bearer {self.login().data['token']}")
         # a regular admin, who can use the CMS but is not a super admin
-        self.regular = mk("regular", "regular@x.com", "Regul4r-pass!!", is_staff=True)
+        self.regular = mk("regular", "regular@x.com", REGULAR_PASSWORD, is_staff=True)
         self.regular_client = self.client_for(make_token(self.regular))
 
     def add_admin(self, client=None, **extra):
@@ -104,7 +104,7 @@ class OnlyTheListedAccountIsSuperAdmin(AdminBase):
 
     def setUp(self):
         super().setUp()
-        self.mac = mk("mac", "mac@x.com", "M4c-passw0rd!!", is_staff=True, is_superuser=True)
+        self.mac = mk("mac", "mac@x.com", fresh_password(), is_staff=True, is_superuser=True)
         self.mac_client = self.client_for(make_token(self.mac))
 
     def test_a_superuser_who_is_not_listed_is_just_an_admin_in_the_cms(self):
@@ -166,9 +166,10 @@ class AddingAnAdmin(AdminBase):
     def test_the_new_admin_can_change_their_own_password(self):
         self.add_admin()
         c = self.client_for(self.login("new.admin@x.com", NEW_PASSWORD).data["token"])
-        r = c.post("/api/auth/change-password/", {"current_password": NEW_PASSWORD, "new_password": "Another-good-pass-7"}, format="json")
+        changed = fresh_password()
+        r = c.post("/api/auth/change-password/", {"current_password": NEW_PASSWORD, "new_password": changed}, format="json")
         self.assertEqual(r.status_code, 200)
-        self.assertEqual(self.login("new.admin@x.com", "Another-good-pass-7").status_code, 200)
+        self.assertEqual(self.login("new.admin@x.com", changed).status_code, 200)
 
     def test_weak_passwords_are_refused_with_the_reason(self):
         for weak in ("123", "password", "12345678", "short1"):
@@ -194,7 +195,7 @@ class AddingAnAdmin(AdminBase):
         self.assertEqual(User.objects.filter(email__iexact="new.admin@x.com").count(), 1)
 
     def test_usernames_never_collide(self):
-        mk("nia", "taken@x.com", "Taken-pass-11")
+        mk("nia", "taken@x.com", fresh_password())
         r = self.add_admin(email="nia@y.com")
         self.assertEqual(r.status_code, 201)
         self.assertEqual(r.data["username"], "nia2")
@@ -226,7 +227,7 @@ class RemovingAnAdmin(AdminBase):
         self.assertTrue(User.objects.filter(pk=self.admin.pk).exists())
 
     def test_a_server_level_superuser_cannot_be_deleted_from_the_cms_either(self):
-        other = mk("owner", "owner@x.com", "0wner-passw0rd!", is_staff=True, is_superuser=True)
+        other = mk("owner", "owner@x.com", fresh_password(), is_staff=True, is_superuser=True)
         r = self.super.delete(f"/api/admins/{other.pk}/")
         self.assertEqual(r.status_code, 403)
         self.assertIn("full server access", r.data["detail"])
@@ -238,7 +239,7 @@ class RemovingAnAdmin(AdminBase):
 
     @override_settings(CMS_SUPER_ADMIN_EMAILS=["info@ghprocurement.com", "boss2@x.com"])
     def test_a_second_super_admin_cannot_delete_the_first_either(self):
-        other = mk("boss2", "boss2@x.com", "B0ss2-passw0rd!", is_staff=True, is_superuser=True)
+        other = mk("boss2", "boss2@x.com", fresh_password(), is_staff=True, is_superuser=True)
         c = self.client_for(make_token(other))
         self.assertEqual(c.get("/api/admins/").status_code, 200)  # a real super admin
         self.assertEqual(c.delete(f"/api/admins/{self.admin.pk}/").status_code, 403)
@@ -297,7 +298,7 @@ class NewAdminsCanUseTwoStep(AdminBase):
         secret = c.post("/api/auth/mfa/setup/").data["secret"]
         c.post("/api/auth/mfa/confirm/", {"code": pyotp.TOTP(secret).at(NOW)}, format="json")
         self.assertIn("token", self.login().data)  # the super admin still signs in with just the password
-        self.assertIn("token", self.login("regular@x.com", "Regul4r-pass!!").data)
+        self.assertIn("token", self.login("regular@x.com", REGULAR_PASSWORD).data)
 
     def test_the_super_admin_list_shows_who_has_it_on(self):
         c = self.client_for(self.login("new.admin@x.com", NEW_PASSWORD).data["token"])
@@ -388,13 +389,13 @@ class AccountsWithQuoteRequestsAreProtected(AdminBase):
         self.assertIn("2 quote requests", r.data["detail"])
 
     def test_an_account_without_quote_requests_is_still_deletable(self):
-        other = mk("lead", "lead@x.com", "Lead-pass-2026")
+        other = mk("lead", "lead@x.com", fresh_password())
         self.assertEqual(self.super.delete(f"/api/user/{other.pk}/").status_code, 204)
         self.assertFalse(User.objects.filter(pk=other.pk).exists())
 
     def test_one_customers_requests_do_not_block_another_customer(self):
         self.rfq(self.customer)
-        other = mk("lead", "lead@x.com", "Lead-pass-2026")
+        other = mk("lead", "lead@x.com", fresh_password())
         self.assertEqual(self.super.delete(f"/api/user/{other.pk}/").status_code, 204)
         self.assertTrue(User.objects.filter(pk=self.customer.pk).exists())
 

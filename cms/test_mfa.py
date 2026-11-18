@@ -12,7 +12,7 @@ from django.utils import timezone
 from . import mfa
 from .authentication import make_token
 from .models import MFADevice, User
-from .tests import ADMIN_EMAIL, ADMIN_PASSWORD, OTHER_PASSWORD, AuthTestBase, mk
+from .tests import ADMIN_EMAIL, ADMIN_PASSWORD, OTHER_PASSWORD, AuthTestBase, fresh_password, mk
 
 NOW = 1_800_000_000  # a fixed moment; codes for it are fully predictable
 
@@ -346,9 +346,10 @@ class Misc(MfaBase):
         self.assertTrue(self.login(password=OTHER_PASSWORD).data["mfa_required"])
 
     def test_another_admin_is_not_affected(self):
-        other = mk("boss", "boss@x.com", "B0ss-passw0rd!", is_staff=True)
+        pw = fresh_password()
+        other = mk("boss", "boss@x.com", pw, is_staff=True)
         self.enable()
-        r = self.login("boss@x.com", "B0ss-passw0rd!")
+        r = self.login("boss@x.com", pw)
         self.assertIn("token", r.data)
         self.assertFalse(MFADevice.objects.filter(user=other).exists())
 

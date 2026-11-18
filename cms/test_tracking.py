@@ -12,7 +12,7 @@ from . import tracking
 from .authentication import make_customer_token
 from .models import AuditLog, RFQ, RFQUpdate, User
 from .test_admins import AdminBase
-from .tests import ADMIN_EMAIL
+from .tests import ADMIN_EMAIL, REGULAR_PASSWORD
 
 STRONG = "Pw-" + secrets.token_urlsafe(14)
 FORM = {"name": "Ada Obi", "email": "ada@acme.com", "company": "Acme Supplies", "phone": "+2348000000000", "item": "20 office chairs", "consent": True}
@@ -70,7 +70,7 @@ class RequestCreatesAnAccount(TrackBase):
         customer = RFQ.objects.get().user
         self.assertNotEqual(customer.pk, self.regular.pk)
         self.assertFalse(customer.is_staff)
-        self.assertEqual(self.login("regular@x.com", "Regul4r-pass!!").status_code, 200)  # admin login untouched
+        self.assertEqual(self.login("regular@x.com", REGULAR_PASSWORD).status_code, 200)  # admin login untouched
 
     def test_missing_fields_are_refused_with_the_field_names(self):
         r = self.anon.post("/api/rfqs/", {"name": "x"}, format="json")
@@ -137,7 +137,7 @@ class ChoosingAPassword(TrackBase):
         self.assertEqual(self.anon.post("/api/customer/login/", {"email": "ada@acme.com", "password": ""}, format="json").status_code, 401)
 
     def test_admins_cannot_sign_in_through_the_customer_door(self):
-        self.assertEqual(self.anon.post("/api/customer/login/", {"email": "regular@x.com", "password": "Regul4r-pass!!"}, format="json").status_code, 401)
+        self.assertEqual(self.anon.post("/api/customer/login/", {"email": "regular@x.com", "password": REGULAR_PASSWORD}, format="json").status_code, 401)
 
     def test_request_link_answers_the_same_for_everyone(self):
         mail.outbox.clear()
