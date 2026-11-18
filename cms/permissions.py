@@ -3,15 +3,20 @@ from rest_framework.permissions import BasePermission, SAFE_METHODS
 
 
 def is_super_admin(user):
-    """The CMS super admin: an active Django superuser whose email is listed in
-    settings.CMS_SUPER_ADMIN_EMAILS (default info@ghprocurement.com)."""
-    emails = [e.lower() for e in getattr(settings, "CMS_SUPER_ADMIN_EMAILS", [])]
+    """The CMS super admin: an active Django superuser who is an owner account (their email is listed in
+    settings.CMS_SUPER_ADMIN_EMAILS, default info@ghprocurement.com) or was made a super admin by one."""
     return bool(
         user
         and getattr(user, "is_active", False)
         and user.is_superuser
-        and (user.email or "").lower() in emails
+        and (is_owner_account(user) or getattr(user, "is_cms_super", False))
     )
+
+
+def is_owner_account(user):
+    """The accounts named in settings.CMS_SUPER_ADMIN_EMAILS: always super admins, and never demoted from the CMS."""
+    emails = [e.lower() for e in getattr(settings, "CMS_SUPER_ADMIN_EMAILS", [])]
+    return bool(user and (user.email or "").lower() in emails)
 
 
 class IsCMSAdmin(BasePermission):

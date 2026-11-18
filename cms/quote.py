@@ -67,8 +67,10 @@ def parse_items(raw):
     return clean
 
 
-def build(rows, currency, shipping=None, vat_percent=None):
-    """Adds the table up. Everything is returned as text (safe to store and to show)."""
+def build(rows, currency, shipping=None, vat_percent=None, service=None, service_mode="fixed"):
+    """Adds the table up: products (subtotal), the Logistic Fee (`shipping`, kept under its old name so earlier quotations
+    still read), the Service Charge (a fixed amount, or a percentage of the subtotal), then VAT on all three.
+    Everything is returned as text (safe to store and to show)."""
     if not rows:
         return {}
     out_rows, subtotal = [], Decimal(0)
@@ -84,12 +86,18 @@ def build(rows, currency, shipping=None, vat_percent=None):
         })
     shipping = (shipping or Decimal(0)).quantize(CENT, rounding=ROUND_HALF_UP)
     vat_percent = (vat_percent or Decimal(0)).quantize(CENT, rounding=ROUND_HALF_UP)
-    vat = ((subtotal + shipping) * vat_percent / 100).quantize(CENT, rounding=ROUND_HALF_UP)
-    total = subtotal + shipping + vat
+    service_mode = "percent" if service_mode == "percent" else "fixed"
+    service = (service or Decimal(0)).quantize(CENT, rounding=ROUND_HALF_UP)
+    service_percent = service if service_mode == "percent" else None
+    service_amount = (subtotal * service / 100).quantize(CENT, rounding=ROUND_HALF_UP) if service_mode == "percent" else service
+    vat = ((subtotal + shipping + service_amount) * vat_percent / 100).quantize(CENT, rounding=ROUND_HALF_UP)
+    total = subtotal + shipping + service_amount + vat
     return {
         "currency": currency, "rows": out_rows,
         "subtotal": str(subtotal), "subtotal_text": money(subtotal, currency),
-        "shipping": str(shipping), "shipping_text": money(shipping, currency) if shipping else "",
+        "shipping": str(shipping), "shipping_text": money(shipping, currency) if shipping else "",   # the Logistic Fee
+        "service_charge": str(service_amount), "service_text": money(service_amount, currency) if service_amount else "",
+        "service_mode": service_mode, "service_percent": f"{service_percent.normalize():f}" if service_percent else "",
         "vat_percent": str(vat_percent.normalize()) if vat_percent else "",
         "vat": str(vat), "vat_text": money(vat, currency) if vat_percent else "",
         "total": str(total), "total_text": money(total, currency),

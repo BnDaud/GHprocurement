@@ -12,12 +12,33 @@ class User (AbstractUser):
     id = models.UUIDField(default=uuid4 , primary_key=True , editable=False)
     dp = CloudinaryField("profile_picture", folder="Dpimage")
     phone = models.CharField(max_length=55 , blank=False)
-    
+    # the person's position in the company (shown in the email signature). It says nothing about what they may do.
+    designation = models.CharField(max_length=80, blank=True)
+    # set by a super admin to give another administrator super-admin rights (the owner accounts listed in the
+    # settings are super admins whatever this says)
+    is_cms_super = models.BooleanField(default=False)
+
+    @property
+    def full_name(self):
+        return f"{self.first_name} {self.last_name}".strip()
+
     def __str__(self):
           return self.username or self.email or str(self.id)
 
     
     
+class Designation(models.Model):
+    """The positions a staff member can hold at GH Procurement (a pick-list, managed by a super admin)."""
+    name = models.CharField(max_length=80, unique=True)
+    position = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        ordering = ["position", "name"]
+
+    def __str__(self):
+        return self.name
+
+
 class Catalog(models.Model):
     
     
@@ -317,6 +338,9 @@ class SentEmail(models.Model):
     recipient_name = models.CharField(max_length=200, blank=True)
     cc = models.JSONField(default=list, blank=True)
     bcc = models.JSONField(default=list, blank=True)
+    # who sent it, as written at the time (the signature of an old email must not change when a name is corrected later)
+    sender_name = models.CharField(max_length=200, blank=True)
+    sender_title = models.CharField(max_length=80, blank=True)
     subject = models.CharField(max_length=200, blank=True)
     title = models.CharField(max_length=200, blank=True)
     body = models.TextField(blank=True)

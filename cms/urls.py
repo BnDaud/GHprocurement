@@ -1,6 +1,6 @@
 from rest_framework.routers import DefaultRouter
 from django.http import HttpResponse
-from .views import InboxView , AdminView , SentEmailView , UserView ,  CatalogView , getTotalView , AllData , ServicesView, FAQView ,  EmailView,MetaDataView , ShowcaseView, RFQView , AuditView , health, attention
+from .views import InboxView , AdminView , SentEmailView , UserView ,  CatalogView , getTotalView , AllData , ServicesView, FAQView ,  EmailView,MetaDataView , ShowcaseView, RFQView , AuditView , health, attention, DesignationView, contacts
 from .auth_views import (LoginView, LoginMfaView, MeView, ChangePasswordView, MfaSetupView,
                          MfaConfirmView, MfaDisableView, MfaRecoveryCodesView)
 from .inbound import postmark_inbound
@@ -22,6 +22,7 @@ routes.register("sent-emails", SentEmailView , basename="sent-emails")
 routes.register("admins", AdminView , basename="admins")
 routes.register("inbox", InboxView , basename="inbox")
 routes.register("audit", AuditView , basename="audit")
+routes.register("designations", DesignationView , basename="designations")
 
 
 
@@ -30,6 +31,7 @@ routes.register("audit", AuditView , basename="audit")
 urlpatterns = [path("health/", health, name="health"),
 path("gettotal" , getTotalView , name = "getTotal"),
 path("attention/", attention),
+path("contacts/", contacts),
 path("alldata/" , AllData , name = "alldata" ), 
 path("emails/" ,EmailView.as_view() ),
   path("inbound/<str:secret>/", postmark_inbound),

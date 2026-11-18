@@ -1,8 +1,8 @@
 from django.shortcuts import render
-from .models import User ,Catalog, FAQ , MetaData , Service , RFQ , SentEmail , InboxMessage , Showcase , STAGE_ORDER
+from .models import Designation,  User ,Catalog, FAQ , MetaData , Service , RFQ , SentEmail , InboxMessage , Showcase , STAGE_ORDER
 from . import tracking
 from .references import create_sent_email
-from .serial import InboxListSerial , InboxSerial , AdminCreateSerial , AdminSerial , SentEmailListSerial , SentEmailSerial , UserSerial , CatalogSerial , MetaDataSerial , FAQSerial , ServicesSerial , RFQSerial , EmailSerial , ShowcaseSerial
+from .serial import InboxListSerial , InboxSerial , AdminCreateSerial , AdminSerial , SentEmailListSerial , SentEmailSerial , UserSerial , CatalogSerial , MetaDataSerial , FAQSerial , ServicesSerial , RFQSerial , EmailSerial , ShowcaseSerial , DesignationSerial
 # Create your views here.
 from rest_framework.views import APIView
 from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet, ViewSet
@@ -18,7 +18,7 @@ import os , threading
 from django.conf import settings
 from django.db.models import Q
 from django.core.exceptions import ValidationError as DjangoValidationError
-from .permissions import IsCMSAdminOrReadOnly, IsSuperAdmin, IsSuperAdminOrReadOnly, is_super_admin
+from .permissions import IsCMSAdmin, IsCMSAdminOrReadOnly, IsSuperAdmin, IsSuperAdminOrReadOnly, is_super_admin, is_owner_account
 from .audit import AuditedMixin, label_of, log, A
 from .models import AuditLog
 
@@ -395,7 +395,7 @@ class EmailView(APIView):
         fields = dict(
             kind=d["kind"], recipient=d["recipient"].strip(), recipient_name=d["recipient_name"], cc=d.get("cc", []), bcc=d.get("bcc", []), subject=d["subject"],
             title=d["title"], body=d["body"], valid_days=d["valid_days"] if d["kind"] == "rfq_reply" else None,
-            rfq=d["rfq"], draft={"items": d["items"], "currency": d["currency"], "shipping": d["shipping"], "vat_percent": d["vat_percent"]},
+            rfq=d["rfq"], draft={"items": d["items"], "currency": d["currency"], "shipping": d["shipping"], "service_charge": d["service_charge"], "service_mode": d["service_mode"], "vat_percent": d["vat_percent"]},
         )
         record = None
         if d.get("draft_id"):
@@ -416,6 +416,9 @@ class EmailView(APIView):
         serializer.is_valid(raise_exception=True)
 
         validated_data = serializer.validated_data
+        from .task import sender_for
+        sender = sender_for(request.user)   # the email is from whoever is signed in, with their own position
+        validated_data.update(sender)
 
         # keep a record (and, for RFQ replies, allocate the reference number)
         record = create_sent_email(
@@ -424,6 +427,7 @@ class EmailView(APIView):
             recipient_name=validated_data.get("recipient_name", ""),
             cc=validated_data.get("cc", []),
             bcc=validated_data.get("bcc", []),
+            sender_name=sender["sender_name"], sender_title=sender["sender_title"],
             subject=validated_data["subject"],
             title=validated_data["title"],
             body=validated_data["body"],
@@ -562,14 +566,79 @@ class AdminView(ViewSet):
         except DjangoValidationError as e:
             return Response({"detail": " ".join(e.messages)}, status=status.HTTP_400_BAD_REQUEST)
 
-        # a regular admin: can use the CMS, but is not a super admin
+        designation = (d.get("designation") or "").strip()
+        if designation and not Designation.objects.filter(name=designation).exists():
+            return Response({"detail": "Choose a position from the list."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # the permission level is chosen here, never taken from the job title; the default is an ordinary admin
+        make_super = d.get("role") == "super_admin" and is_super_admin(request.user)
         user = User.objects.create_user(
             username=username, email=email, password=d["password"],
-            first_name=d["first_name"], last_name=d["last_name"],
-            is_staff=True, is_superuser=False, dp="", phone="",
+            first_name=d["first_name"], last_name=d["last_name"], designation=designation,
+            is_staff=True, is_superuser=make_super, is_cms_super=make_super, dp="", phone="",
         )
-        log(request, A.CREATED, "admin", email)
+        log(request, A.CREATED, "admin", email, "super admin" if make_super else "admin")
         return Response(AdminSerial(user).data, status=status.HTTP_201_CREATED)
+
+    def partial_update(self, request, pk=None):
+        """Correct a staff member's details. The registered name, the permission level and who is active can only be
+        changed by a super admin (this view is super-admin only, and each rule is checked again here)."""
+        from .serial import AdminUpdateSerial
+        try:
+            target = self._admins().filter(pk=pk).first()
+        except (ValueError, DjangoValidationError):
+            target = None
+        if target is None:
+            return Response({"detail": "Administrator not found."}, status=status.HTTP_404_NOT_FOUND)
+        s = AdminUpdateSerial(data=request.data)
+        s.is_valid(raise_exception=True)
+        d = s.validated_data
+        me = request.user
+        iam_super = is_super_admin(me)
+        changed = []
+
+        def refuse(msg, code=status.HTTP_403_FORBIDDEN):
+            return Response({"detail": msg}, status=code)
+
+        for key in ("first_name", "last_name"):
+            if key in d and d[key].strip() != getattr(target, key):
+                if not iam_super:
+                    return refuse("Only a super admin can correct a registered name.")
+                if key == "first_name" and not d[key].strip():
+                    return refuse("A registered name cannot be empty.", status.HTTP_400_BAD_REQUEST)
+                setattr(target, key, d[key].strip()); changed.append("name")
+        if "email" in d and d["email"].strip().lower() != (target.email or "").lower():
+            if User.objects.filter(email__iexact=d["email"].strip()).exclude(pk=target.pk).exists():
+                return refuse("Another account already uses this email.", status.HTTP_400_BAD_REQUEST)
+            target.email = d["email"].strip(); changed.append("email")
+        if "designation" in d and d["designation"].strip() != target.designation:
+            name = d["designation"].strip()
+            if name and not Designation.objects.filter(name=name).exists():
+                return refuse("Choose a position from the list.", status.HTTP_400_BAD_REQUEST)
+            target.designation = name; changed.append("designation")
+        if "role" in d:
+            want_super = d["role"] == "super_admin"
+            if want_super != is_super_admin(target):
+                if not iam_super:
+                    return refuse("Only a super admin can change permission levels.")
+                if target.pk == me.pk:
+                    return refuse("You cannot change your own permission level.")
+                if not want_super and is_owner_account(target):
+                    return refuse("This account is an owner account and always stays a super admin.")
+                target.is_superuser = want_super; target.is_cms_super = want_super; target.is_staff = True
+                changed.append("permission level")
+        if "is_active" in d and d["is_active"] != target.is_active:
+            if target.pk == me.pk:
+                return refuse("You cannot deactivate your own account.")
+            if is_owner_account(target) and not d["is_active"]:
+                return refuse("An owner account cannot be deactivated here.")
+            target.is_active = d["is_active"]; changed.append("status")
+        if changed:
+            target.save()
+            log(request, A.UPDATED, "admin", target.email or target.username, "changed: " + ", ".join(sorted(set(changed))))
+        return Response(AdminSerial(target).data)
+
+    update = partial_update
 
     def destroy(self, request, pk=None):
         try:
@@ -719,3 +788,79 @@ def health(request):
     response = Response({"status": "ok" if up else "down"}, status=200 if up else 503)
     response["Cache-Control"] = "no-store"
     return response
+
+
+class DesignationView(ModelViewSet):
+    """The positions a staff member can hold. Any administrator can read the list (the staff form and the mail
+    page use it); only a super admin can add or remove a position."""
+    serializer_class = DesignationSerial
+    queryset = Designation.objects.all()
+    pagination_class = None
+
+    def get_permissions(self):
+        return [IsCMSAdmin()] if self.action in ("list", "retrieve") else [IsSuperAdmin()]
+
+    def destroy(self, request, *args, **kwargs):
+        d = self.get_object()
+        in_use = User.objects.filter(designation=d.name).count()
+        if in_use:
+            return Response({"detail": f"{in_use} staff member(s) hold this position. Move them to another position first."},
+                            status=status.HTTP_409_CONFLICT)
+        log(request, A.DELETED, "position", d.name)
+        return super().destroy(request, *args, **kwargs)
+
+    def perform_create(self, serializer):
+        d = serializer.save()
+        log(self.request, A.CREATED, "position", d.name)
+
+
+@api_view(["GET"])
+@permission_classes([IsCMSAdmin])
+def contacts(request):
+    """Recipient suggestions while typing: people the company knows (customers, quote requesters, staff, senders of
+    inbox mail, and everyone it has emailed). Matches names, emails and companies; exact and starting matches first,
+    then the people emailed most often."""
+    from collections import Counter
+    q = (request.query_params.get("q") or "").strip().lower()
+    if len(q) < 1:
+        return Response([])
+    people = {}   # email -> {"email", "name", "company", "sent": n, "seen": datetime}
+
+    def add(email, name="", company="", weight=0):
+        email = (email or "").strip().lower()
+        if not email or "@" not in email:
+            return
+        p = people.setdefault(email, {"email": email, "name": "", "company": "", "sent": 0})
+        p["name"] = p["name"] or (name or "").strip()
+        p["company"] = p["company"] or (company or "").strip()
+        p["sent"] += weight
+
+    for u in User.objects.filter(Q(email__icontains=q) | Q(first_name__icontains=q) | Q(last_name__icontains=q) | Q(username__icontains=q))[:40]:
+        add(u.email, u.full_name or u.username)
+    for r in RFQ.objects.filter(Q(email__icontains=q) | Q(name__icontains=q) | Q(company__icontains=q))[:40]:
+        add(r.email, r.name, r.company)
+    for m in InboxMessage.objects.filter(Q(from_email__icontains=q) | Q(from_name__icontains=q))[:40]:
+        add(m.from_email, m.from_name)
+    sent = Counter()
+    for rec in SentEmail.objects.exclude(status=SentEmail.Status.DRAFT).order_by("-created_at")[:2000]:
+        for e in [rec.recipient, *(rec.cc or []), *(rec.bcc or [])]:
+            sent[(e or "").lower()] += 1
+        if q in (rec.recipient or "").lower() or q in (rec.recipient_name or "").lower():
+            add(rec.recipient, rec.recipient_name)
+    for e, n in sent.items():
+        if q in e:
+            add(e)
+    for e, p in people.items():
+        p["sent"] = sent.get(e, 0)
+
+    def rank(p):
+        name, email = p["name"].lower(), p["email"]
+        if email == q or name == q:
+            tier = 0
+        elif email.startswith(q) or name.startswith(q) or any(w.startswith(q) for w in name.split()):
+            tier = 1
+        else:
+            tier = 2
+        return (tier, -p["sent"], name or email)
+    out = sorted((p for p in people.values() if q in p["email"] or q in p["name"].lower() or q in p["company"].lower()), key=rank)[:8]
+    return Response([{"email": p["email"], "name": p["name"], "company": p["company"], "sent": p["sent"]} for p in out])

@@ -15,7 +15,22 @@ logger = logging.getLogger(__name__)
 LOGO_PATH = os.path.join(settings.BASE_DIR, "templates", "assets", "email-logo.png")
 LOGO_CID = "ghprocurement-logo"
 LOGO_FALLBACK_URL = "https://res.cloudinary.com/djasdhmmg/image/upload/v1767976601/Logo_iaaqdj.png"
-SIGNATURE = "Regards,\nLawal Abdur-Razaq\nGH Procurement"
+# emails sent before the signature followed the sender were all signed by this person
+LEGACY_SENDER = "Lawal Abdur-Razaq"
+
+
+def sender_for(user):
+    """Who an email is from: the signed-in person's registered name and their position in the company."""
+    name = ""
+    if user is not None:
+        name = (getattr(user, "full_name", "") or "").strip() or (user.username or "").strip()
+    return {"sender_name": name or "GH Procurement", "sender_title": (getattr(user, "designation", "") or "").strip()}
+
+
+def signature_lines(data):
+    name = (data.get("sender_name") or "").strip() or LEGACY_SENDER
+    title = (data.get("sender_title") or "").strip()
+    return ["Regards,", name] + ([title] if title else []) + ["GH Procurement"]
 
 
 def _human_size(n):
@@ -84,6 +99,8 @@ def _render_html(data, files, logo_cid, logo_url, thumbs, placeholders=False):
         "reference": data.get("reference") or "",
         "prepared_for": (data.get("recipient_name") or "").strip() or data["recipient"],
         "valid_until": valid_until,
+        "sender_name": (data.get("sender_name") or "").strip() or LEGACY_SENDER,
+        "sender_title": (data.get("sender_title") or "").strip(),
         "is_quote": kind == "rfq_reply",
         "quote": data.get("quote") or {},
         "order_reference": data.get("order_reference") or "",
@@ -152,7 +169,10 @@ def build_email(data):
             text_lines += [f"  {r['description']}: {r['quantity']} x {r['unit_price_text']} = {r['line_total_text']}"]
         text_lines += [f"  Subtotal: {q['subtotal_text']}"]
         if q.get("shipping_text"):
-            text_lines += [f"  Delivery: {q['shipping_text']}"]
+            text_lines += [f"  Logistic Fee: {q['shipping_text']}"]
+        if q.get("service_text"):
+            pct = f" ({q['service_percent']}%)" if q.get("service_percent") else ""
+            text_lines += [f"  Service Charge{pct}: {q['service_text']}"]
         if q.get("vat_text"):
             text_lines += [f"  VAT ({q['vat_percent']}%): {q['vat_text']}"]
         text_lines += [f"  TOTAL: {q['total_text']}", ""]
@@ -160,7 +180,7 @@ def build_email(data):
         text_lines += [f"Attachments ({len(files)}):"] + [
             f"  - {f['name']} ({f['size']})" for f in files
         ] + [""]
-    text_lines += [SIGNATURE, "", f"{info['office']}", f"{info['contact_email']} | {info['phone']} | {WEBSITE}"]
+    text_lines += ["\n".join(signature_lines(data)), "", f"{info['office']}", f"{info['contact_email']} | {info['phone']} | {WEBSITE}"]
 
     email = EmailMultiAlternatives(
         subject=data["subject"],
@@ -211,6 +231,7 @@ def render_sent_html(record):
         "recipient": record.recipient, "recipient_name": record.recipient_name, "valid_days": record.valid_days,
         "reference": record.reference or "", "quote": record.quote or {}, "sent_at": record.created_at,
         "order_reference": record.rfq.reference if record.rfq_id else "", "order_id": record.rfq_id,
+        "sender_name": record.sender_name, "sender_title": record.sender_title,
     }
     files = [{"name": f.get("name", ""), "size": _human_size(int(f.get("size") or 0))} for f in (record.attachments_info or [])]
     return _render_html(data, files, "", logo_url, {}, placeholders=True)[0]

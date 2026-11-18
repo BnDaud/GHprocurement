@@ -79,7 +79,7 @@ class SendingQuotes(TrackBase):
         r = self.send()
         self.assertEqual(r.status_code, 200, r.data)
         h = mail.outbox[0].alternatives[0][0]
-        for must in ("Price breakdown (NGN)", "Office chair", "₦45,000.00", "₦900,000.00", "Subtotal", "Delivery", "VAT (7.5%)", "₦1,427,065.19", "Prepared for"):
+        for must in ("Price breakdown (NGN)", "Office chair", "₦45,000.00", "₦900,000.00", "Subtotal", "Logistic Fee", "VAT (7.5%)", "₦1,427,065.19", "Prepared for"):
             self.assertIn(must, h, must)
         self.assertIn("TOTAL: ₦1,427,065.19", mail.outbox[0].body)  # the plain-text version too
         self.assertIn("email/header.jpg", h)

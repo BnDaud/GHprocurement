@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from rest_framework.serializers import ChoiceField, DecimalField, UUIDField, IntegerField, ModelSerializer , SerializerMethodField , ImageField , Serializer , CharField , EmailField ,  ListField , FileField
-from .models import User , Catalog,Service , FAQ ,MetaData , RFQ , SentEmail , InboxMessage , Showcase
+from .models import User , Catalog,Service , FAQ ,MetaData , RFQ , SentEmail , InboxMessage , Designation , Showcase
 from django.contrib.auth.hashers import make_password
 from rest_framework.exceptions import ValidationError
 import os
@@ -337,7 +337,10 @@ class EmailSerial(Serializer):
     # the price table of a quotation: rows as JSON text, added up on the server
     items = CharField(required=False, allow_blank=True, default="")
     currency = CharField(max_length=3, required=False, allow_blank=True, default="")
-    shipping = CharField(required=False, allow_blank=True, default="")
+    shipping = CharField(required=False, allow_blank=True, default="")   # the Logistic Fee
+    # the person's own fee on top of the goods and the logistic fee: a fixed amount, or a percentage of the goods
+    service_charge = CharField(required=False, allow_blank=True, default="")
+    service_mode = ChoiceField(choices=["fixed", "percent"], required=False, default="fixed")
     vat_percent = CharField(required=False, allow_blank=True, default="")
     # optional pictures of the items: row N points at one of these by position
     item_images = ListField(child=FileField(), required=False, allow_empty=True)
@@ -368,10 +371,12 @@ class EmailSerial(Serializer):
         rows = quote.parse_items(attrs.get("items"))
         if (rows or attrs.get("rfq")) and kind != "rfq_reply":
             raise ValidationError({"items": "A price table and an order can only go with a reply to a quote request."})
-        shipping = quote.optional_amount(attrs.get("shipping"), "Delivery", Decimal(1_000_000_000))
+        shipping = quote.optional_amount(attrs.get("shipping"), "Logistic fee", Decimal(1_000_000_000))
+        service_mode = attrs.get("service_mode") or "fixed"
+        service = quote.optional_amount(attrs.get("service_charge"), "Service charge", Decimal(100) if service_mode == "percent" else Decimal(1_000_000_000))
         vat = quote.optional_amount(attrs.get("vat_percent"), "VAT", Decimal(100))
-        if (shipping or vat) and not rows:
-            raise ValidationError({"items": "Add at least one row to the price table, or clear delivery and VAT."})
+        if (shipping or vat or service) and not rows:
+            raise ValidationError({"items": "Add at least one row to the price table, or clear the logistic fee, service charge and VAT."})
         currency = attrs.get("currency") or (MetaData.objects.values_list("currency", flat=True).first() or "USD")
         thumbs = attrs.get("item_images") or []
         for n, r in enumerate(rows, 1):
@@ -393,7 +398,7 @@ class EmailSerial(Serializer):
                 if data:
                     order_thumbs[n] = data
                     rows[n]["image"] = -1  # marks "has a picture" for the saved table
-        attrs["quote"] = quote.build(rows, currency, shipping, vat)
+        attrs["quote"] = quote.build(rows, currency, shipping, vat, service, service_mode)
         # row position -> thumbnail bytes (shown inside the table, never listed as an attachment)
         attrs["item_thumbs"] = {**{n: thumbs[r["image"]] for n, r in enumerate(rows) if r["image"] is not None and r["image"] >= 0}, **order_thumbs}
         if attrs.get("rfq"):
@@ -473,6 +478,8 @@ class DraftSerial(Serializer):
     items = CharField(max_length=60000, required=False, allow_blank=True, default="")
     currency = CharField(max_length=3, required=False, allow_blank=True, default="")
     shipping = CharField(max_length=20, required=False, allow_blank=True, default="")
+    service_charge = CharField(max_length=20, required=False, allow_blank=True, default="")
+    service_mode = ChoiceField(choices=["fixed", "percent"], required=False, default="fixed")
     vat_percent = CharField(max_length=20, required=False, allow_blank=True, default="")
     rfq = UUIDField(required=False, allow_null=True, default=None)
     draft_id = UUIDField(required=False, allow_null=True, default=None)
@@ -511,7 +518,7 @@ class SentEmailListSerial(ModelSerializer):
 
     class Meta:
         model = SentEmail
-        fields = ["id", "reference", "kind", "recipient", "recipient_name", "cc", "bcc", "subject",
+        fields = ["id", "reference", "kind", "recipient", "recipient_name", "cc", "bcc", "sender_name", "sender_title", "subject",
                   "valid_days", "attachments_count", "attachments", "status",
                   "created_at", "sent_at", "order_reference", "total"]
 
@@ -542,11 +549,16 @@ class AdminSerial(ModelSerializer):
     role = SerializerMethodField()
     mfa_enabled = SerializerMethodField()
     protected = SerializerMethodField()
+    owner = SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ["id", "email", "username", "first_name", "last_name", "name", "role",
+        fields = ["id", "email", "username", "first_name", "last_name", "name", "designation", "role", "owner",
                   "protected", "mfa_enabled", "is_active", "date_joined", "last_login"]
+
+    def get_owner(self, obj):
+        from .permissions import is_owner_account
+        return is_owner_account(obj)
 
     def get_protected(self, obj):
         # accounts with server-level access can never be deleted from the CMS
@@ -569,6 +581,24 @@ class AdminCreateSerial(Serializer):
     password = CharField(required=True, write_only=True, trim_whitespace=False, max_length=128)
     first_name = CharField(required=False, allow_blank=True, max_length=150, default="")
     last_name = CharField(required=False, allow_blank=True, max_length=150, default="")
+    designation = CharField(required=False, allow_blank=True, max_length=80, default="")
+    role = ChoiceField(choices=["admin", "super_admin"], required=False, default="admin")
+
+
+class AdminUpdateSerial(Serializer):
+    """What can be changed on an administrator. Every field is optional; the view decides who may change which."""
+    email = EmailField(required=False)
+    first_name = CharField(required=False, allow_blank=True, max_length=150)
+    last_name = CharField(required=False, allow_blank=True, max_length=150)
+    designation = CharField(required=False, allow_blank=True, max_length=80)
+    role = ChoiceField(choices=["admin", "super_admin"], required=False)
+    is_active = serializers.BooleanField(required=False)
+
+
+class DesignationSerial(ModelSerializer):
+    class Meta:
+        model = Designation
+        fields = ["id", "name", "position"]
 
 
 class InboxListSerial(ModelSerializer):

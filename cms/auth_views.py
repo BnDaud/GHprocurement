@@ -27,6 +27,7 @@ def _user_payload(user):
         "username": user.username,
         "is_super_admin": is_super_admin(user),
         "name": f"{user.first_name} {user.last_name}".strip(),
+        "designation": user.designation,
         "mfa_enabled": mfa.is_enabled(user),
     }
 
